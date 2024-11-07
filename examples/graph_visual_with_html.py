@@ -3,7 +3,7 @@ from pyvis.network import Network
 import random
 
 # Load the GraphML file
-G = nx.read_graphml("./dickens/graph_chunk_entity_relation.graphml")
+G = nx.read_graphml("./data/test_temp/graph_chunk_entity_relation.graphml")
 
 # Create a Pyvis network
 net = Network(height="100vh", notebook=True)
@@ -16,4 +16,4 @@ for node in net.nodes:
     node["color"] = "#{:06x}".format(random.randint(0, 0xFFFFFF))
 
 # Save and display the network
-net.show("knowledge_graph.html")
+net.show("./data/knowledge_graph.html")

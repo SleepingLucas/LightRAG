@@ -166,6 +166,7 @@ Do not include information where the supporting evidence for it is not provided.
 Add sections and commentary to the response as appropriate for the length and format. Style the response in markdown.
 """
 
+# *关键词提取 (高级关键词: 总体概念或主题; 低级关键词: 具体实体、细节或具体术语)
 PROMPTS["keywords_extraction"] = """---Role---
 
 You are a helpful assistant tasked with identifying both high-level and low-level keywords in the user's query.

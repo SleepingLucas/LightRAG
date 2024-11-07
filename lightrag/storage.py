@@ -17,6 +17,10 @@ from .base import (
 
 @dataclass
 class JsonKVStorage(BaseKVStorage):
+    """
+    简单的KV存储，数据存储在 json 文件中
+    """
+    
     def __post_init__(self):
         working_dir = self.global_config["working_dir"]
         self._file_name = os.path.join(working_dir, f"kv_store_{self.namespace}.json")
@@ -58,6 +62,10 @@ class JsonKVStorage(BaseKVStorage):
 
 @dataclass
 class NanoVectorDBStorage(BaseVectorStorage):
+    """
+    使用 NanoVectorDB 存储向量数据，数据存储在 json 文件中
+    """
+    
     cosine_better_than_threshold: float = 0.2
 
     def __post_init__(self):
@@ -117,6 +125,10 @@ class NanoVectorDBStorage(BaseVectorStorage):
 
 @dataclass
 class NetworkXStorage(BaseGraphStorage):
+    """
+    使用 NetworkX 存储图数据，数据存储在 graphml 文件中
+    """
+    
     @staticmethod
     def load_nx_graph(file_name) -> nx.Graph:
         if os.path.exists(file_name):

@@ -162,6 +162,7 @@ class LightRAG:
             self.embedding_func
         )
 
+        # 实体数据库，存储实体名称与其 id 的映射，见 vdb_entities.json
         self.entities_vdb = self.vector_db_storage_cls(
             namespace="entities",
             global_config=asdict(self),

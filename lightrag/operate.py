@@ -400,7 +400,7 @@ async def local_query(
     context = None
     use_model_func = global_config["llm_model_func"]
 
-    kw_prompt_temp = PROMPTS["keywords_extraction"]
+    kw_prompt_temp = PROMPTS["keywords_extraction"] # 关键词提取
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
 
@@ -425,7 +425,11 @@ async def local_query(
         except json.JSONDecodeError as e:
             print(f"JSON parsing error: {e}")
             return PROMPTS["fail_response"]
+        
     if keywords:
+        logger.debug(f"local query 提取出的关键词 {keywords}")
+        
+        # 获取知识，知识通过表格形式展示
         context = await _build_local_query_context(
             keywords,
             knowledge_graph_inst,
@@ -445,6 +449,8 @@ async def local_query(
         query,
         system_prompt=sys_prompt,
     )
+    
+    # 意义不明
     if len(response) > len(sys_prompt):
         response = (
             response.replace(sys_prompt, "")
@@ -460,33 +466,57 @@ async def local_query(
 
 
 async def _build_local_query_context(
-    query,
+    query: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
 ):
+    """
+    获取知识，以表格的形式展现
+    
+    Args:
+        query(str): 关键词
+        knowledge_graph_inst(BaseGraphStorage): 图数据库
+        entities_vdb(BaseVectorStorage): 向量数据库
+        text_chunks_db(BaseKVStorage[TextChunkSchema]): 文本数据库
+        query_param(QueryParam): 查询参数
 
+    Returns:
+        str: 知识表格
+    """
+
+    # 从实体数据库中根据关键词查询有关实体，result 为一个实体信息的列表
     results = await entities_vdb.query(query, top_k=query_param.top_k)
+    logger.debug(f"local query 从实体数据库中获取的信息 {results}")
 
     if not len(results):
         return None
+    
+    # 从图数据库中获取实体的信息
     node_datas = await asyncio.gather(
         *[knowledge_graph_inst.get_node(r["entity_name"]) for r in results]
     )
     if not all([n is not None for n in node_datas]):
         logger.warning("Some nodes are missing, maybe the storage is damaged")
+        
+    # 获取实体的度
     node_degrees = await asyncio.gather(
         *[knowledge_graph_inst.node_degree(r["entity_name"]) for r in results]
     )
+    
     node_datas = [
         {**n, "entity_name": k["entity_name"], "rank": d}
-        for k, n, d in zip(results, node_datas, node_degrees)
+        for k, n, d in zip(results, node_datas, node_degrees)   # 实体名，实体信息，度
         if n is not None
     ]#what is this text_chunks_db doing.  dont remember it in airvx.  check the diagram.
+    
+    # 获取与实体最相关的文本单元
     use_text_units = await _find_most_related_text_unit_from_entities(
         node_datas, query_param, text_chunks_db, knowledge_graph_inst
-    )
+    )   
+    
+    # 获取与实体最相关的关系
     use_relations = await _find_most_related_edges_from_entities(
         node_datas, query_param, knowledge_graph_inst
     )
@@ -548,29 +578,54 @@ async def _find_most_related_text_unit_from_entities(
     query_param: QueryParam,
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     knowledge_graph_inst: BaseGraphStorage,
-):
+) -> list[TextChunkSchema]:
+    """
+    从给定的实体列表中找到与这些实体最相关的文本单元
+    
+    Args:
+        node_datas(list[dict]): 实体列表
+        query_param(QueryParam): 查询参数
+        text_chunks_db(BaseKVStorage[TextChunkSchema]): 文本数据库
+        knowledge_graph_inst(BaseGraphStorage): 图数据库
+        
+    Returns:
+        list[TextChunkSchema]: 文本单元列表
+    """
+    
+    # 获取每个实体的 source_id，并将其分割成多个文本单元 ID
     text_units = [
         split_string_by_multi_markers(dp["source_id"], [GRAPH_FIELD_SEP])
         for dp in node_datas
     ]
+    
+    # 获取每个实体的一跳邻居节点
     edges = await asyncio.gather(
         *[knowledge_graph_inst.get_node_edges(dp["entity_name"]) for dp in node_datas]
     )
+    
+    # 收集所有一跳邻居节点
     all_one_hop_nodes = set()
     for this_edges in edges:
         if not this_edges:
             continue
         all_one_hop_nodes.update([e[1] for e in this_edges])
     all_one_hop_nodes = list(all_one_hop_nodes)
+    
+    # 获取所有一跳邻居节点的数据
     all_one_hop_nodes_data = await asyncio.gather(
         *[knowledge_graph_inst.get_node(e) for e in all_one_hop_nodes]
     )
+    
+    # 创建一个字典，存储每个一跳邻居节点的文本单元 ID 集合
     all_one_hop_text_units_lookup = {
         k: set(split_string_by_multi_markers(v["source_id"], [GRAPH_FIELD_SEP]))
         for k, v in zip(all_one_hop_nodes, all_one_hop_nodes_data)
         if v is not None
     }
+    
     all_text_units_lookup = {}
+    
+    # 遍历每个实体的文本单元和边，计算每个文本单元的关系计数
     for index, (this_text_units, this_edges) in enumerate(zip(text_units, edges)):
         for c_id in this_text_units:
             if c_id in all_text_units_lookup:
@@ -587,19 +642,27 @@ async def _find_most_related_text_unit_from_entities(
                 "order": index,
                 "relation_counts": relation_counts,
             }
+    
+    # 检查是否有缺失的文本单元
     if any([v is None for v in all_text_units_lookup.values()]):
         logger.warning("Text chunks are missing, maybe the storage is damaged")
+    
+    # 将所有文本单元按顺序和关系计数排序
     all_text_units = [
         {"id": k, **v} for k, v in all_text_units_lookup.items() if v is not None
     ]
     all_text_units = sorted(
         all_text_units, key=lambda x: (x["order"], -x["relation_counts"])
     )
+    
+    # 根据最大 token 大小截断文本单元列表
     all_text_units = truncate_list_by_token_size(
         all_text_units,
         key=lambda x: x["data"]["content"],
         max_token_size=query_param.max_token_for_text_unit,
     )
+    
+    # 返回文本单元数据列表
     all_text_units: list[TextChunkSchema] = [t["data"] for t in all_text_units]
     return all_text_units
 
@@ -609,6 +672,18 @@ async def _find_most_related_edges_from_entities(
     query_param: QueryParam,
     knowledge_graph_inst: BaseGraphStorage,
 ):
+    """
+    从给定的实体列表中找到与这些实体最相关的关系
+    
+    Args:
+        node_datas(list[dict]): 实体列表
+        query_param(QueryParam): 查询参数
+        knowledge_graph_inst(BaseGraphStorage): 图数据库
+        
+    Returns:
+        list[dict]: 关系列表
+    """
+    
     all_related_edges = await asyncio.gather(
         *[knowledge_graph_inst.get_node_edges(dp["entity_name"]) for dp in node_datas]
     )

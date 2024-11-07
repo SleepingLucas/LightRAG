@@ -706,8 +706,8 @@ async def ollama_embedding(texts: list[str], embed_model, **kwargs) -> np.ndarra
     embed_text = []
     ollama_client = ollama.Client(**kwargs)
     for text in texts:
-        data = ollama_client.embeddings(model=embed_model, prompt=text)
-        embed_text.append(data["embedding"])
+        data = ollama_client.embed(model=embed_model, input=text)
+        embed_text.append(data["embeddings"][0])
 
     return embed_text
 

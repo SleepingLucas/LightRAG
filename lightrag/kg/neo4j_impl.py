@@ -24,6 +24,10 @@ from tenacity import (
 
 @dataclass
 class Neo4JStorage(BaseGraphStorage):
+    """
+    Neo4j 图数据库存储实现
+    """
+    
     @staticmethod
     def load_nx_graph(file_name):
        print ("no preloading of graph with neo4j in production")

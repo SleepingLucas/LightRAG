@@ -2,6 +2,7 @@ import os
 
 from lightrag import LightRAG, QueryParam
 from lightrag.llm import gpt_4o_mini_complete
+import textract
 
 WORKING_DIR = "./dickens"
 
@@ -14,9 +15,11 @@ rag = LightRAG(
     # llm_model_func=gpt_4o_complete
 )
 
-
-with open("./book.txt", "r", encoding="utf-8") as f:
-    rag.insert(f.read())
+file_path = "人生海海.pdf"
+text_content = textract.process(file_path)
+rag.insert(text_content.decode('utf-8'))
+# with open("./book.txt", "r", encoding="utf-8") as f:
+#     rag.insert(f.read())
 
 # Perform naive search
 print(
