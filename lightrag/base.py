@@ -5,10 +5,28 @@ import numpy as np
 
 from .utils import EmbeddingFunc
 
-TextChunkSchema = TypedDict(
-    "TextChunkSchema",
-    {"tokens": int, "content": str, "full_doc_id": str, "chunk_order_index": int},
-)
+TextChunkSchema = TypedDict("TextChunkSchema", {
+    "tokens": int, 
+    "content": str, 
+    "full_doc_id": str, 
+    "chunk_order_index": int
+})
+
+EntityDict = TypedDict('EntityDict', {
+    'entity_name': str,
+    'entity_type': str,
+    'description': str,
+    'source_id': str
+})
+
+RelationshipDict = TypedDict('RelationshipDict', {
+    'src_id': str,
+    'tgt_id': str,
+    'weight': float,
+    'description': str,
+    'keywords': str,
+    'source_id': str
+})
 
 T = TypeVar("T")
 

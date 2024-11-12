@@ -255,7 +255,7 @@ def xml_to_json(xml_file):
         return None
 
 
-def process_combine_contexts(hl, ll):
+def process_combine_contexts(hl, ll) -> str:
     header = None
     list_hl = csv_string_to_list(hl.strip())
     list_ll = csv_string_to_list(ll.strip())

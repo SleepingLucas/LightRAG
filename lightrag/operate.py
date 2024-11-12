@@ -1,7 +1,7 @@
 import asyncio
 import json
 import re
-from typing import Union
+from typing import Any, Generator, Optional, Union
 from collections import Counter, defaultdict
 import warnings
 from .utils import (
@@ -22,6 +22,8 @@ from .base import (
     BaseKVStorage,
     BaseVectorStorage,
     TextChunkSchema,
+    EntityDict,
+    RelationshipDict,
     QueryParam,
 )
 from .prompt import GRAPH_FIELD_SEP, PROMPTS
@@ -29,23 +31,29 @@ from .prompt import GRAPH_FIELD_SEP, PROMPTS
 
 def chunking_by_token_size(
     content: str, overlap_token_size=128, max_token_size=1024, tiktoken_model="gpt-4o"
-):
+) -> Generator[dict[str, Any], Any, None]:
     tokens = encode_string_by_tiktoken(content, model_name=tiktoken_model)
-    results = []
+    # results = []
     for index, start in enumerate(
         range(0, len(tokens), max_token_size - overlap_token_size)
     ):
         chunk_content = decode_tokens_by_tiktoken(
             tokens[start : start + max_token_size], model_name=tiktoken_model
         )
-        results.append(
-            {
-                "tokens": min(max_token_size, len(tokens) - start),
-                "content": chunk_content.strip(),
-                "chunk_order_index": index,
-            }
-        )
-    return results
+        
+        yield {
+            "tokens": min(max_token_size, len(tokens) - start),
+            "content": chunk_content.strip(),
+            "chunk_order_index": index,
+        }
+    #     results.append(
+    #         {
+    #             "tokens": min(max_token_size, len(tokens) - start),
+    #             "content": chunk_content.strip(),
+    #             "chunk_order_index": index,
+    #         }
+    #     )
+    # return results
 
 
 async def _handle_entity_relation_summary(
@@ -53,32 +61,69 @@ async def _handle_entity_relation_summary(
     description: str,
     global_config: dict,
 ) -> str:
+    """
+    使用 LLM 对实体或关系的描述进行摘要。
+
+    Args:
+        entity_or_relation_name (str): 实体或关系的名称。
+        description (str): 实体或关系的完整描述。
+        global_config (dict): 全局配置字典，包括 LLM 函数和参数。
+
+    Returns:
+        str: 摘要后的描述字符串。
+    """
     use_llm_func: callable = global_config["llm_model_func"]
     llm_max_tokens = global_config["llm_model_max_token_size"]
     tiktoken_model_name = global_config["tiktoken_model_name"]
     summary_max_tokens = global_config["entity_summary_to_max_tokens"]
 
+    # 对描述进行编码，获取其 token 数
     tokens = encode_string_by_tiktoken(description, model_name=tiktoken_model_name)
-    if len(tokens) < summary_max_tokens:  # No need for summary
+    logger.debug(f"Original description tokens: {len(tokens)}")
+
+    # 如果描述的 token 数小于摘要的最大 token 数，不需要摘要
+    if len(tokens) < summary_max_tokens:
+        logger.debug("Description is short enough, no need to summarize.")
         return description
+
+    # 准备摘要的提示模板
     prompt_template = PROMPTS["summarize_entity_descriptions"]
+
+    # 截断描述使其符合 LLM 的最大 token 数
     use_description = decode_tokens_by_tiktoken(
         tokens[:llm_max_tokens], model_name=tiktoken_model_name
     )
+
+    # 构建上下文，包括实体名称和截断的描述列表
     context_base = dict(
         entity_name=entity_or_relation_name,
         description_list=use_description.split(GRAPH_FIELD_SEP),
     )
     use_prompt = prompt_template.format(**context_base)
-    logger.debug(f"Trigger summary: {entity_or_relation_name}")
+    logger.debug(f"Using prompt for summary: {use_prompt}")
+
+    # 调用 LLM 生成摘要
     summary = await use_llm_func(use_prompt, max_tokens=summary_max_tokens)
+    logger.debug(f"Generated summary for {entity_or_relation_name}: {summary}")
+
     return summary
 
 
 async def _handle_single_entity_extraction(
     record_attributes: list[str],
     chunk_key: str,
-):
+) -> Optional[EntityDict]:
+    """
+    处理单个实体提取
+    
+    Args:
+        record_attributes(list[str]): 记录属性
+        chunk_key(str): 文本块键
+        
+    Returns:
+        Optional[EntityDict]: 实体字典
+    """
+    
     if len(record_attributes) < 4 or record_attributes[0] != '"entity"':
         return None
     # add this record as a node in the G
@@ -99,7 +144,18 @@ async def _handle_single_entity_extraction(
 async def _handle_single_relationship_extraction(
     record_attributes: list[str],
     chunk_key: str,
-):
+) -> Optional[RelationshipDict]:
+    """
+    处理单个关系提取
+    
+    Args:
+        record_attributes(list[str]): 记录属性
+        chunk_key(str): 文本块键
+        
+    Returns:
+        Optional[RelationshipDict]: 关系字典
+    """
+    
     if len(record_attributes) < 5 or record_attributes[0] != '"relationship"':
         return None
     # add this record as edge
@@ -127,44 +183,74 @@ async def _merge_nodes_then_upsert(
     nodes_data: list[dict],
     knowledge_graph_inst: BaseGraphStorage,
     global_config: dict,
-):
-    already_entitiy_types = []
+) -> EntityDict:
+    """
+    合并节点信息并更新到知识图谱。
+
+    Args:
+        entity_name (str): 实体名称。
+        nodes_data (list[dict]): 节点数据列表。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+        global_config (dict): 全局配置字典。
+
+    Returns:
+        dict: 合并后的节点数据。
+    """
+
+    # 初始化存储现有节点信息的列表
+    already_entity_types = []
     already_source_ids = []
     already_description = []
 
+    # 从知识图谱中获取已存在的节点
     already_node = await knowledge_graph_inst.get_node(entity_name)
     if already_node is not None:
-        already_entitiy_types.append(already_node["entity_type"])
+        # 收集已有的实体类型、来源 ID 和描述
+        already_entity_types.append(already_node["entity_type"])
         already_source_ids.extend(
             split_string_by_multi_markers(already_node["source_id"], [GRAPH_FIELD_SEP])
         )
         already_description.append(already_node["description"])
+        logger.debug(f"Node {entity_name} already exists in graph.")
+    else:
+        logger.debug(f"Node {entity_name} is new to graph.")
 
-    entity_type = sorted(
-        Counter(
-            [dp["entity_type"] for dp in nodes_data] + already_entitiy_types
-        ).items(),
-        key=lambda x: x[1],
-        reverse=True,
-    )[0][0]
+    # 统计出现次数最多的实体类型
+    entity_type_counter = Counter(
+        [dp["entity_type"] for dp in nodes_data] + already_entity_types
+    )
+    entity_type = entity_type_counter.most_common(1)[0][0]
+
+    # 合并描述信息，去除重复
     description = GRAPH_FIELD_SEP.join(
         sorted(set([dp["description"] for dp in nodes_data] + already_description))
     )
+
+    # 合并来源 ID，去除重复
     source_id = GRAPH_FIELD_SEP.join(
         set([dp["source_id"] for dp in nodes_data] + already_source_ids)
     )
+
+    # 对描述进行摘要
     description = await _handle_entity_relation_summary(
         entity_name, description, global_config
     )
+    logger.debug(f"Final description for {entity_name}: {description}")
+
+    # 构建节点数据
     node_data = dict(
         entity_type=entity_type,
         description=description,
         source_id=source_id,
     )
+
+    # 更新或插入节点到知识图谱
     await knowledge_graph_inst.upsert_node(
         entity_name,
         node_data=node_data,
     )
+    logger.debug(f"Upserted node {entity_name} into knowledge graph.")
+
     node_data["entity_name"] = entity_name
     return node_data
 
@@ -175,14 +261,30 @@ async def _merge_edges_then_upsert(
     edges_data: list[dict],
     knowledge_graph_inst: BaseGraphStorage,
     global_config: dict,
-):
+) -> RelationshipDict:
+    """
+    合并边信息并更新到知识图谱。
+
+    参数：
+        src_id (str): 源节点ID。
+        tgt_id (str): 目标节点ID。
+        edges_data (list[dict]): 边数据列表。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+        global_config (dict): 全局配置字典。
+
+    返回：
+        dict: 合并后的边数据。
+    """
+
     already_weights = []
     already_source_ids = []
     already_description = []
     already_keywords = []
 
+    # 检查边是否已存在于知识图谱中
     if await knowledge_graph_inst.has_edge(src_id, tgt_id):
         already_edge = await knowledge_graph_inst.get_edge(src_id, tgt_id)
+        # 收集已有的权重、来源 ID、描述和关键词
         already_weights.append(already_edge["weight"])
         already_source_ids.extend(
             split_string_by_multi_markers(already_edge["source_id"], [GRAPH_FIELD_SEP])
@@ -191,19 +293,30 @@ async def _merge_edges_then_upsert(
         already_keywords.extend(
             split_string_by_multi_markers(already_edge["keywords"], [GRAPH_FIELD_SEP])
         )
+        logger.debug(f"Edge from {src_id} to {tgt_id} already exists.")
+    else:
+        logger.debug(f"Edge from {src_id} to {tgt_id} is new to graph.")
 
+    # 计算总权重
     weight = sum([dp["weight"] for dp in edges_data] + already_weights)
+
+    # 合并描述和关键词，去除重复
     description = GRAPH_FIELD_SEP.join(
         sorted(set([dp["description"] for dp in edges_data] + already_description))
     )
     keywords = GRAPH_FIELD_SEP.join(
         sorted(set([dp["keywords"] for dp in edges_data] + already_keywords))
     )
+
+    # 合并来源 ID，去除重复
     source_id = GRAPH_FIELD_SEP.join(
         set([dp["source_id"] for dp in edges_data] + already_source_ids)
     )
+
+    # 确保源节点和目标节点存在于知识图谱中
     for need_insert_id in [src_id, tgt_id]:
         if not (await knowledge_graph_inst.has_node(need_insert_id)):
+            logger.debug(f"Node {need_insert_id} is missing. Inserting into graph.")
             await knowledge_graph_inst.upsert_node(
                 need_insert_id,
                 node_data={
@@ -212,9 +325,14 @@ async def _merge_edges_then_upsert(
                     "entity_type": '"UNKNOWN"',
                 },
             )
+
+    # 对描述进行摘要
     description = await _handle_entity_relation_summary(
         (src_id, tgt_id), description, global_config
     )
+    logger.debug(f"Final description for edge {src_id}->{tgt_id}: {description}")
+
+    # 更新或插入边到知识图谱
     await knowledge_graph_inst.upsert_edge(
         src_id,
         tgt_id,
@@ -225,12 +343,15 @@ async def _merge_edges_then_upsert(
             source_id=source_id,
         ),
     )
+    logger.debug(f"Upserted edge from {src_id} to {tgt_id} into knowledge graph.")
 
     edge_data = dict(
         src_id=src_id,
         tgt_id=tgt_id,
         description=description,
         keywords=keywords,
+        weight=weight,
+        source_id=source_id,
     )
 
     return edge_data
@@ -243,6 +364,19 @@ async def extract_entities(
     relationships_vdb: BaseVectorStorage,
     global_config: dict,
 ) -> Union[BaseGraphStorage, None]:
+    """
+    从文本块中提取实体和关系，更新知识图谱实例和向量数据库。
+
+    参数：
+        chunks (dict[str, TextChunkSchema]): 文本块字典，键为文本块ID，值为文本块数据。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+        entity_vdb (BaseVectorStorage): 实体向量数据库实例。
+        relationships_vdb (BaseVectorStorage): 关系向量数据库实例。
+        global_config (dict): 全局配置字典。
+
+    返回：
+        Union[BaseGraphStorage, None]: 更新后的知识图谱实例，如果未提取到任何实体或关系则返回None。
+    """
     use_llm_func: callable = global_config["llm_model_func"]
     entity_extract_max_gleaning = global_config["entity_extract_max_gleaning"]
 
@@ -262,16 +396,29 @@ async def extract_entities(
     already_entities = 0
     already_relations = 0
 
-    async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]):
+    async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]) -> tuple[dict[Any, list], dict[Any, list]]:
+        """
+        处理单个文本块，提取实体和关系。
+        
+        Args:
+            chunk_key_dp(tuple[str, TextChunkSchema]): 文本块键值对
+            
+        Returns:
+            tuple[dict[Any, list], dict[Any, list]]: 实体和关系字典
+        """
+        
         nonlocal already_processed, already_entities, already_relations
         chunk_key = chunk_key_dp[0]
         chunk_dp = chunk_key_dp[1]
         content = chunk_dp["content"]
+        # 生成初始提示，提取实体和关系
         hint_prompt = entity_extract_prompt.format(**context_base, input_text=content)
         final_result = await use_llm_func(hint_prompt)
 
+        # 打包用户和助手的历史对话，用于持续提取
         history = pack_user_ass_to_openai_messages(hint_prompt, final_result)
         for now_glean_index in range(entity_extract_max_gleaning):
+            # 获取更多的实体和关系信息
             glean_result = await use_llm_func(continue_prompt, history_messages=history)
 
             history += pack_user_ass_to_openai_messages(continue_prompt, glean_result)
@@ -279,6 +426,7 @@ async def extract_entities(
             if now_glean_index == entity_extract_max_gleaning - 1:
                 break
 
+            # 判断是否需要继续提取
             if_loop_result: str = await use_llm_func(
                 if_loop_prompt, history_messages=history
             )
@@ -286,6 +434,7 @@ async def extract_entities(
             if if_loop_result != "yes":
                 break
 
+        # 解析LLM返回的结果，分割成记录
         records = split_string_by_multi_markers(
             final_result,
             [context_base["record_delimiter"], context_base["completion_delimiter"]],
@@ -301,6 +450,7 @@ async def extract_entities(
             record_attributes = split_string_by_multi_markers(
                 record, [context_base["tuple_delimiter"]]
             )
+            # 处理可能的实体
             if_entities = await _handle_single_entity_extraction(
                 record_attributes, chunk_key
             )
@@ -308,6 +458,7 @@ async def extract_entities(
                 maybe_nodes[if_entities["entity_name"]].append(if_entities)
                 continue
 
+            # 处理可能的关系
             if_relation = await _handle_single_relationship_extraction(
                 record_attributes, chunk_key
             )
@@ -315,6 +466,7 @@ async def extract_entities(
                 maybe_edges[(if_relation["src_id"], if_relation["tgt_id"])].append(
                     if_relation
                 )
+        # 更新已处理的统计信息
         already_processed += 1
         already_entities += len(maybe_nodes)
         already_relations += len(maybe_edges)
@@ -328,11 +480,11 @@ async def extract_entities(
         )
         return dict(maybe_nodes), dict(maybe_edges)
 
-    # use_llm_func is wrapped in ascynio.Semaphore, limiting max_async callings
+    # 并发处理所有文本块，提取实体和关系
     results = await asyncio.gather(
         *[_process_single_content(c) for c in ordered_chunks]
     )
-    print()  # clear the progress bar
+    print()  # 清除进度条
     maybe_nodes = defaultdict(list)
     maybe_edges = defaultdict(list)
     for m_nodes, m_edges in results:
@@ -340,12 +492,15 @@ async def extract_entities(
             maybe_nodes[k].extend(v)
         for k, v in m_edges.items():
             maybe_edges[tuple(sorted(k))].extend(v)
+            
+    # 合并并更新节点信息
     all_entities_data = await asyncio.gather(
         *[
             _merge_nodes_then_upsert(k, v, knowledge_graph_inst, global_config)
             for k, v in maybe_nodes.items()
         ]
     )
+    # 合并并更新关系信息
     all_relationships_data = await asyncio.gather(
         *[
             _merge_edges_then_upsert(k[0], k[1], v, knowledge_graph_inst, global_config)
@@ -361,6 +516,7 @@ async def extract_entities(
         )
         return None
 
+    # 更新实体向量数据库
     if entity_vdb is not None:
         data_for_vdb = {
             compute_mdhash_id(dp["entity_name"], prefix="ent-"): {
@@ -371,6 +527,7 @@ async def extract_entities(
         }
         await entity_vdb.upsert(data_for_vdb)
 
+    # 更新关系向量数据库
     if relationships_vdb is not None:
         data_for_vdb = {
             compute_mdhash_id(dp["src_id"] + dp["tgt_id"], prefix="rel-"): {
@@ -397,6 +554,21 @@ async def local_query(
     query_param: QueryParam,
     global_config: dict,
 ) -> str:
+    """
+    执行本地查询，利用知识图谱和向量数据库回答用户的问题。
+
+    参数：
+        query (str): 用户查询字符串。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+        entities_vdb (BaseVectorStorage): 实体向量数据库。
+        relationships_vdb (BaseVectorStorage): 关系向量数据库。
+        text_chunks_db (BaseKVStorage[TextChunkSchema]): 文本块存储数据库。
+        query_param (QueryParam): 查询参数配置。
+        global_config (dict): 全局配置字典。
+
+    返回：
+        str: 返回给用户的查询结果。
+    """
     context = None
     use_model_func = global_config["llm_model_func"]
 
@@ -486,7 +658,7 @@ async def _build_local_query_context(
         str: 知识表格
     """
 
-    # 从实体数据库中根据关键词查询有关实体，result 为一个实体信息的列表
+    # 从实体数据库中根据关键词查询有关实体，result 为一个实体信息的列表 list[dict{"__id__": str, "entity_name": str}]
     results = await entities_vdb.query(query, top_k=query_param.top_k)
     logger.debug(f"local query 从实体数据库中获取的信息 {results}")
 
@@ -650,6 +822,7 @@ async def _find_most_related_text_unit_from_entities(
                 }
     
     # Filter out None values and ensure data has content
+    # 选取所有有效的文本单元
     all_text_units = [
         {"id": k, **v} 
         for k, v in all_text_units_lookup.items() 
@@ -732,6 +905,21 @@ async def global_query(
     query_param: QueryParam,
     global_config: dict,
 ) -> str:
+    """
+    执行全局查询，利用高层次的关键词进行查询。
+
+    参数：
+        query (str): 用户查询字符串。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+        entities_vdb (BaseVectorStorage): 实体向量数据库。
+        relationships_vdb (BaseVectorStorage): 关系向量数据库。
+        text_chunks_db (BaseKVStorage[TextChunkSchema]): 文本块存储数据库。
+        query_param (QueryParam): 查询参数配置。
+        global_config (dict): 全局配置字典。
+
+    返回：
+        str: 返回给用户的查询结果。
+    """
     context = None
     use_model_func = global_config["llm_model_func"]
 
@@ -740,11 +928,13 @@ async def global_query(
     result = await use_model_func(kw_prompt)
 
     try:
+        # 解析LLM返回的关键词
         keywords_data = json.loads(result)
         keywords = keywords_data.get("high_level_keywords", [])
         keywords = ", ".join(keywords)
     except json.JSONDecodeError:
         try:
+            # 尝试修正LLM返回的格式错误
             result = (
                 result.replace(kw_prompt[:-1], "")
                 .replace("user", "")
@@ -754,13 +944,15 @@ async def global_query(
             result = "{" + result.split("{")[1].split("}")[0] + "}"
 
             keywords_data = json.loads(result)
+            # 获取高层次关键词
             keywords = keywords_data.get("high_level_keywords", [])
             keywords = ", ".join(keywords)
 
         except json.JSONDecodeError as e:
-            # Handle parsing error
+            # 处理解析错误
             print(f"JSON parsing error: {e}")
             return PROMPTS["fail_response"]
+        
     if keywords:
         context = await _build_global_query_context(
             keywords,
@@ -806,43 +998,67 @@ async def _build_global_query_context(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
 ):
+    """
+    获取全局上下文，以表格的形式展现
+
+    参数：
+        keywords (str): 高层次关键词
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例
+        entities_vdb (BaseVectorStorage): 实体向量数据库
+        relationships_vdb (BaseVectorStorage): 关系向量数据库
+        text_chunks_db (BaseKVStorage[TextChunkSchema]): 文本块存储数据库
+        query_param (QueryParam): 查询参数配置
+
+    返回：
+        str: 知识表格
+    """
+    # 从关系向量数据库中根据关键词查询相关的关系, result 为一个关系信息的列表 list[dict{"__id__": str, "src_id": str, "tgt_id": str}]
     results = await relationships_vdb.query(keywords, top_k=query_param.top_k)
 
     if not len(results):
         return None
 
+    # 获取查询到的关系的详细信息
     edge_datas = await asyncio.gather(
         *[knowledge_graph_inst.get_edge(r["src_id"], r["tgt_id"]) for r in results]
     )
 
     if not all([n is not None for n in edge_datas]):
         logger.warning("Some edges are missing, maybe the storage is damaged")
+        
+    # 获取每个关系的度数
     edge_degree = await asyncio.gather(
         *[knowledge_graph_inst.edge_degree(r["src_id"], r["tgt_id"]) for r in results]
     )
+    # 合并关系数据，添加源、目标节点和排名信息
     edge_datas = [
         {"src_id": k["src_id"], "tgt_id": k["tgt_id"], "rank": d, **v}
         for k, v, d in zip(results, edge_datas, edge_degree)
         if v is not None
     ]
+    # 按排名和权重对关系进行排序
     edge_datas = sorted(
         edge_datas, key=lambda x: (x["rank"], x["weight"]), reverse=True
     )
+    # 截断关系列表以符合最大token数限制
     edge_datas = truncate_list_by_token_size(
         edge_datas,
         key=lambda x: x["description"],
         max_token_size=query_param.max_token_for_global_context,
     )
 
+    # 从关系中提取相关的实体
     use_entities = await _find_most_related_entities_from_relationships(
         edge_datas, query_param, knowledge_graph_inst
     )
+    # 从关系中提取相关的文本单元
     use_text_units = await _find_related_text_unit_from_relationships(
         edge_datas, query_param, text_chunks_db, knowledge_graph_inst
     )
     logger.info(
         f"Global query uses {len(use_entities)} entites, {len(edge_datas)} relations, {len(use_text_units)} text units"
     )
+    # 构建关系的表格数据
     relations_section_list = [
         ["id", "source", "target", "description", "keywords", "weight", "rank"]
     ]
@@ -860,6 +1076,7 @@ async def _build_global_query_context(
         )
     relations_context = list_of_list_to_csv(relations_section_list)
 
+    # 构建实体的表格数据
     entites_section_list = [["id", "entity", "type", "description", "rank"]]
     for i, n in enumerate(use_entities):
         entites_section_list.append(
@@ -873,11 +1090,13 @@ async def _build_global_query_context(
         )
     entities_context = list_of_list_to_csv(entites_section_list)
 
+    # 构建文本单元的表格数据
     text_units_section_list = [["id", "content"]]
     for i, t in enumerate(use_text_units):
         text_units_section_list.append([i, t["content"]])
     text_units_context = list_of_list_to_csv(text_units_section_list)
 
+    # 返回格式化的上下文字符串
     return f"""
 -----Entities-----
 ```csv
@@ -899,23 +1118,40 @@ async def _find_most_related_entities_from_relationships(
     query_param: QueryParam,
     knowledge_graph_inst: BaseGraphStorage,
 ):
+    """
+    从给定的关系列表中找到与这些关系相关的最相关实体。
+
+    Args:
+        edge_datas (list[dict]): 关系列表。
+        query_param (QueryParam): 查询参数。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+
+    Returns:
+        list[dict]: 实体数据列表。
+    """
+    # 提取关系中的所有实体名称
     entity_names = set()
     for e in edge_datas:
         entity_names.add(e["src_id"])
         entity_names.add(e["tgt_id"])
 
+    # 获取每个实体的详细数据
     node_datas = await asyncio.gather(
         *[knowledge_graph_inst.get_node(entity_name) for entity_name in entity_names]
     )
 
+    # 获取每个实体的度（连接关系的数量）
     node_degrees = await asyncio.gather(
         *[knowledge_graph_inst.node_degree(entity_name) for entity_name in entity_names]
     )
+
+    # 合并实体数据，添加实体名和排名信息
     node_datas = [
         {**n, "entity_name": k, "rank": d}
         for k, n, d in zip(entity_names, node_datas, node_degrees)
     ]
 
+    # 根据最大 token 大小截断实体列表
     node_datas = truncate_list_by_token_size(
         node_datas,
         key=lambda x: x["description"],
@@ -930,7 +1166,20 @@ async def _find_related_text_unit_from_relationships(
     query_param: QueryParam,
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     knowledge_graph_inst: BaseGraphStorage,
-):
+) -> list[TextChunkSchema]:
+    """
+    从给定的关系列表中找到与这些关系相关的文本单元。
+
+    Args:
+        edge_datas (list[dict]): 关系列表。
+        query_param (QueryParam): 查询参数。
+        text_chunks_db (BaseKVStorage[TextChunkSchema]): 文本块数据库。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+
+    Returns:
+        list[TextChunkSchema]: 文本单元列表。
+    """
+    # 获取每个关系的 source_id 并分割成多个文本单元 ID
     text_units = [
         split_string_by_multi_markers(dp["source_id"], [GRAPH_FIELD_SEP])
         for dp in edge_datas
@@ -938,6 +1187,7 @@ async def _find_related_text_unit_from_relationships(
 
     all_text_units_lookup = {}
 
+    # 遍历所有文本单元 ID，获取对应的文本块数据
     for index, unit_list in enumerate(text_units):
         for c_id in unit_list:
             if c_id not in all_text_units_lookup:
@@ -946,17 +1196,24 @@ async def _find_related_text_unit_from_relationships(
                     "order": index,
                 }
 
+    # 检查是否有缺失的文本块数据
     if any([v is None for v in all_text_units_lookup.values()]):
-        logger.warning("Text chunks are missing, maybe the storage is damaged")
+        logger.warning("缺失文本块，存储可能已损坏")
+    # 将文本块数据转化为列表
     all_text_units = [
         {"id": k, **v} for k, v in all_text_units_lookup.items() if v is not None
     ]
+
+    # 根据顺序对文本块排序
     all_text_units = sorted(all_text_units, key=lambda x: x["order"])
+
+    # 根据最大 token 大小截断文本块列表
     all_text_units = truncate_list_by_token_size(
         all_text_units,
         key=lambda x: x["data"]["content"],
         max_token_size=query_param.max_token_for_text_unit,
     )
+    # 提取文本单元数据
     all_text_units: list[TextChunkSchema] = [t["data"] for t in all_text_units]
 
     return all_text_units
@@ -971,6 +1228,21 @@ async def hybrid_query(
     query_param: QueryParam,
     global_config: dict,
 ) -> str:
+    """
+    执行混合查询，结合本地和全局查询的结果。
+
+    参数：
+        query (str): 用户查询字符串。
+        knowledge_graph_inst (BaseGraphStorage): 知识图谱实例。
+        entities_vdb (BaseVectorStorage): 实体向量数据库。
+        relationships_vdb (BaseVectorStorage): 关系向量数据库。
+        text_chunks_db (BaseKVStorage[TextChunkSchema]): 文本块存储数据库。
+        query_param (QueryParam): 查询参数配置。
+        global_config (dict): 全局配置字典。
+
+    返回：
+        str: 返回给用户的查询结果。
+    """
     low_level_context = None
     high_level_context = None
     use_model_func = global_config["llm_model_func"]
@@ -1023,6 +1295,7 @@ async def hybrid_query(
             query_param,
         )
 
+    # 合并高层次和低层次的上下文
     context = combine_contexts(high_level_context, low_level_context)
 
     if query_param.only_need_context:
@@ -1051,9 +1324,19 @@ async def hybrid_query(
     return response
 
 
-def combine_contexts(high_level_context, low_level_context):
-    # Function to extract entities, relationships, and sources from context strings
+def combine_contexts(high_level_context, low_level_context) -> str:
+    """
+    组合高层次和低层次的上下文，去除重复的信息。
 
+    参数：
+        high_level_context (str): 高层次的上下文字符串。
+        low_level_context (str): 低层次的上下文字符串。
+
+    返回：
+        str: 合并后的上下文字符串。
+    """
+
+    # 定义函数，从上下文字符串中提取实体、关系和来源部分
     def extract_sections(context):
         entities_match = re.search(
             r"-----Entities-----\s*```csv\s*(.*?)\s*```", context, re.DOTALL
@@ -1071,8 +1354,7 @@ def combine_contexts(high_level_context, low_level_context):
 
         return entities, relationships, sources
 
-    # Extract sections from both contexts
-
+    # 从高层次和低层次上下文中提取部分
     if high_level_context is None:
         warnings.warn(
             "High Level context is None. Return empty High entity/relationship/source"
@@ -1089,18 +1371,16 @@ def combine_contexts(high_level_context, low_level_context):
     else:
         ll_entities, ll_relationships, ll_sources = extract_sections(low_level_context)
 
-    # Combine and deduplicate the entities
+    # 合并并去重实体、关系和来源
     combined_entities = process_combine_contexts(hl_entities, ll_entities)
 
-    # Combine and deduplicate the relationships
     combined_relationships = process_combine_contexts(
         hl_relationships, ll_relationships
     )
 
-    # Combine and deduplicate the sources
     combined_sources = process_combine_contexts(hl_sources, ll_sources)
 
-    # Format the combined context
+    # 格式化合并后的上下文
     return f"""
 -----Entities-----
 ```csv
@@ -1124,7 +1404,22 @@ async def naive_query(
     query_param: QueryParam,
     global_config: dict,
 ):
+    """
+    执行简单查询，直接使用向量数据库匹配文本块。
+
+    参数：
+        query (str): 用户查询字符串。
+        chunks_vdb (BaseVectorStorage): 文本块向量数据库。
+        text_chunks_db (BaseKVStorage[TextChunkSchema]): 文本块存储数据库。
+        query_param (QueryParam): 查询参数配置。
+        global_config (dict): 全局配置字典。
+
+    返回：
+        str: 返回给用户的查询结果或失败响应。
+    """
     use_model_func = global_config["llm_model_func"]
+    
+    # 直接从向量数据库中查询文本块，相当于普通 RAG 
     results = await chunks_vdb.query(query, top_k=query_param.top_k)
     if not len(results):
         return PROMPTS["fail_response"]

@@ -14,7 +14,7 @@ load_dotenv()
 
 print(os.getenv("DASHSCOPE_API_KEY"))
 
-WORKING_DIR = "./test_temp"
+WORKING_DIR = "./data/test_temp"
 
 if not os.path.exists(WORKING_DIR):
     os.mkdir(WORKING_DIR)
@@ -94,6 +94,7 @@ async def main():
                     texts, embed_model="viosay/conan-embedding-v1:latest", host="http://192.168.69.234:11343"
                 ),
             ),
+            log_level="DEBUG",
         )
 
         # file_path = "人生海海.pdf"
@@ -108,27 +109,27 @@ async def main():
         #         "What are the top themes in this story?", param=QueryParam(mode="naive")
         #     )
         # )
-        # Perform naive search
-        print(
-            await rag.aquery(
-                "汤庸是一个怎样的人？", param=QueryParam(mode="naive")
-            )
-        )
+        # # Perform naive search
+        # print(
+        #     await rag.aquery(
+        #         "汤庸是一个怎样的人？", param=QueryParam(mode="naive")
+        #     )
+        # )
 
-        # Perform local search
-        print(
-            await rag.aquery(
-                "汤庸是一个怎样的人？", param=QueryParam(mode="local")
-            )
-        )
+        # # Perform local search
+        # print(
+        #     await rag.aquery(
+        #         "汤庸是一个怎样的人？", param=QueryParam(mode="local")
+        #     )
+        # )
 
-        # Perform global search
-        print(
-            await rag.aquery(
-                "汤庸是一个怎样的人？",
-                param=QueryParam(mode="global"),
-            )
-        )
+        # # Perform global search
+        # print(
+        #     await rag.aquery(
+        #         "汤庸是一个怎样的人？",
+        #         param=QueryParam(mode="global"),
+        #     )
+        # )
 
         # Perform hybrid search
         print(

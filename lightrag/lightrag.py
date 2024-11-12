@@ -136,14 +136,17 @@ class LightRAG:
             logger.info(f"Creating working directory {self.working_dir}")
             os.makedirs(self.working_dir)
 
+        # 全文 kv 存储数据库，存储文档的 id 与其内容的映射，见 kv_store_full_docs.json
         self.full_docs = self.key_string_value_json_storage_cls(
             namespace="full_docs", global_config=asdict(self)
         )
 
+        # 文本块 kv 存储数据库，存储文本块的 id 与其内容的映射，见 kv_store_text_chunks.json
         self.text_chunks = self.key_string_value_json_storage_cls(
             namespace="text_chunks", global_config=asdict(self)
         )
 
+        # LLM 响应缓存 kv 存储数据库，存储 LLM 模型的响应结果，见 kv_store_llm_response_cache.json
         self.llm_response_cache = (
             self.key_string_value_json_storage_cls(
                 namespace="llm_response_cache", global_config=asdict(self)
@@ -151,12 +154,10 @@ class LightRAG:
             if self.enable_llm_cache
             else None
         )
+        
+        # 实体关系图数据库，存储实体之间的关系，见 graph_chunk_entity_relation.graphml
         self.chunk_entity_relation_graph = self.graph_storage_cls(
             namespace="chunk_entity_relation", global_config=asdict(self)
-        )
-
-        self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(
-            self.embedding_func
         )
 
         # 实体数据库，存储实体名称与其 id 的映射，见 vdb_entities.json
@@ -166,16 +167,24 @@ class LightRAG:
             embedding_func=self.embedding_func,
             meta_fields={"entity_name"},
         )
+        
+        # 关系数据库，存储实体之间的关系，见 vdb_relationships.json
         self.relationships_vdb = self.vector_db_storage_cls(
             namespace="relationships",
             global_config=asdict(self),
             embedding_func=self.embedding_func,
             meta_fields={"src_id", "tgt_id"},
         )
+        
+        # 文本块数据库，存储文本块的 id 与其内容的映射，见 vdb_chunks.json
         self.chunks_vdb = self.vector_db_storage_cls(
             namespace="chunks",
             global_config=asdict(self),
             embedding_func=self.embedding_func,
+        )
+
+        self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(
+            self.embedding_func
         )
 
         self.llm_model_func = limit_async_func_call(self.llm_model_max_async)(
@@ -198,6 +207,16 @@ class LightRAG:
         return loop.run_until_complete(self.ainsert(string_or_strings))
 
     async def ainsert(self, string_or_strings):
+        """
+        以字符串或字符串列表的形式插入新的文档。
+        
+        Args:
+            string_or_strings (Union[str, List[str]]): 插入的文档内容
+            
+        Returns:
+            None
+        """
+        
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
@@ -213,6 +232,7 @@ class LightRAG:
                 return
             logger.info(f"[New Docs] inserting {len(new_docs)} docs")
 
+            # chunking
             inserting_chunks = {}
             for doc_key, doc in new_docs.items():
                 chunks = {
