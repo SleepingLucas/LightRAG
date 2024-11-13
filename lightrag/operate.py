@@ -382,15 +382,15 @@ async def extract_entities(
 
     ordered_chunks = list(chunks.items())
 
-    entity_extract_prompt = PROMPTS["entity_extraction"]
+    entity_extract_prompt = PROMPTS["entity_extraction"]    # 实体及关系提取
     context_base = dict(
         tuple_delimiter=PROMPTS["DEFAULT_TUPLE_DELIMITER"],
         record_delimiter=PROMPTS["DEFAULT_RECORD_DELIMITER"],
         completion_delimiter=PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
         entity_types=",".join(PROMPTS["DEFAULT_ENTITY_TYPES"]),
     )
-    continue_prompt = PROMPTS["entiti_continue_extraction"]
-    if_loop_prompt = PROMPTS["entiti_if_loop_extraction"]
+    continue_prompt = PROMPTS["entiti_continue_extraction"]   # 继续提取
+    if_loop_prompt = PROMPTS["entiti_if_loop_extraction"]   # 是否继续提取
 
     already_processed = 0
     already_entities = 0
