@@ -16,6 +16,7 @@ from .utils import (
     split_string_by_multi_markers,
     truncate_list_by_token_size,
     process_combine_contexts,
+    locate_json_string_body_from_string,
 )
 from .base import (
     BaseGraphStorage,
@@ -575,9 +576,10 @@ async def local_query(
     kw_prompt_temp = PROMPTS["keywords_extraction"] # 关键词提取
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
+    json_text = locate_json_string_body_from_string(result)
 
     try:
-        keywords_data = json.loads(result)
+        keywords_data = json.loads(json_text)
         keywords = keywords_data.get("low_level_keywords", [])
         keywords = ", ".join(keywords)
     except json.JSONDecodeError:
@@ -781,7 +783,7 @@ async def _find_most_related_text_unit_from_entities(
         if not this_edges:
             continue
         all_one_hop_nodes.update([e[1] for e in this_edges])
-    
+
     all_one_hop_nodes = list(all_one_hop_nodes)
     
     # 获取所有一跳邻居节点的数据
@@ -796,7 +798,7 @@ async def _find_most_related_text_unit_from_entities(
         for k, v in zip(all_one_hop_nodes, all_one_hop_nodes_data)
         if v is not None and "source_id" in v  # Add source_id check
     }
-    
+
     all_text_units_lookup = {}
     
     # 遍历每个实体的文本单元和边，计算每个文本单元的关系计数
@@ -812,7 +814,7 @@ async def _find_most_related_text_unit_from_entities(
                         and c_id in all_one_hop_text_units_lookup[e[1]]
                     ):
                         relation_counts += 1
-            
+
             chunk_data = await text_chunks_db.get_by_id(c_id)
             if chunk_data is not None and "content" in chunk_data:  # Add content check
                 all_text_units_lookup[c_id] = {
@@ -820,22 +822,21 @@ async def _find_most_related_text_unit_from_entities(
                     "order": index,
                     "relation_counts": relation_counts,
                 }
-    
+
     # Filter out None values and ensure data has content
     # 选取所有有效的文本单元
     all_text_units = [
-        {"id": k, **v} 
-        for k, v in all_text_units_lookup.items() 
+        {"id": k, **v}
+        for k, v in all_text_units_lookup.items()
         if v is not None and v.get("data") is not None and "content" in v["data"]
     ]
-    
+
     if not all_text_units:
         logger.warning("No valid text units found")
         return []
-        
+
     all_text_units = sorted(
-        all_text_units, 
-        key=lambda x: (x["order"], -x["relation_counts"])
+        all_text_units, key=lambda x: (x["order"], -x["relation_counts"])
     )
     
     # 根据最大 token 大小截断文本单元列表
@@ -926,10 +927,10 @@ async def global_query(
     kw_prompt_temp = PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
+    json_text = locate_json_string_body_from_string(result)
 
     try:
-        # 解析LLM返回的关键词
-        keywords_data = json.loads(result)
+        keywords_data = json.loads(json_text)
         keywords = keywords_data.get("high_level_keywords", [])
         keywords = ", ".join(keywords)
     except json.JSONDecodeError:
@@ -1251,8 +1252,9 @@ async def hybrid_query(
     kw_prompt = kw_prompt_temp.format(query=query)
 
     result = await use_model_func(kw_prompt)
+    json_text = locate_json_string_body_from_string(result)
     try:
-        keywords_data = json.loads(result)
+        keywords_data = json.loads(json_text)
         hl_keywords = keywords_data.get("high_level_keywords", [])
         ll_keywords = keywords_data.get("low_level_keywords", [])
         hl_keywords = ", ".join(hl_keywords)
