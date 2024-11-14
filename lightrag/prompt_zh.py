@@ -7,7 +7,7 @@ PROMPTS_ZH["DEFAULT_RECORD_DELIMITER"] = "##"
 PROMPTS_ZH["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 PROMPTS_ZH["process_tickers"] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-PROMPTS_ZH["DEFAULT_ENTITY_TYPES"] = ["组织", "人", "地理", "事件"]
+PROMPTS_ZH["DEFAULT_ENTITY_TYPES"] = ["organization", "person", "location", "event", "award", "journal", "patent", "paper", "type", "date"]
 
 PROMPTS_ZH["entity_extraction"] = """-目标-
 给定一个可能与此活动相关的文本文档和一个实体类型列表，从文本中识别出所有这些类型的实体以及所有识别出的实体之间的关系。
@@ -40,7 +40,7 @@ PROMPTS_ZH["entity_extraction"] = """-目标-
 ######################
 示例1：
 
-实体类型：[人, 技术, 任务, 组织, 地点]
+实体类型：[person, technology, mission, organization, location]
 文本：
 当亚历克斯紧咬牙关时，泰勒的权威确定性背景下的挫败感变得迟钝。正是这种竞争的潜流让他保持警觉，他和乔丹对发现的共同承诺是一种无声的反抗，反对克鲁兹对控制和秩序的狭隘愿景。
 
@@ -51,11 +51,11 @@ PROMPTS_ZH["entity_extraction"] = """-目标-
 这是一个微小的变化，几乎察觉不到，但亚历克斯内心点头表示注意。他们都是通过不同的路径来到这里的
 ################
 输出：
-("entity"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"人"{tuple_delimiter}"亚历克斯是一个角色，他经历了挫败感，并观察到其他角色之间的动态。"){record_delimiter}
-("entity"{tuple_delimiter}"泰勒"{tuple_delimiter}"人"{tuple_delimiter}"泰勒被描绘成具有权威确定性，并对设备表现出一瞬间的敬畏，表明其观点的变化。"){record_delimiter}
-("entity"{tuple_delimiter}"乔丹"{tuple_delimiter}"人"{tuple_delimiter}"乔丹对发现的共同承诺，并与泰勒就设备有重要互动。"){record_delimiter}
-("entity"{tuple_delimiter}"克鲁兹"{tuple_delimiter}"人"{tuple_delimiter}"克鲁兹与控制和秩序的愿景相关，影响了其他角色之间的动态。"){record_delimiter}
-("entity"{tuple_delimiter}"设备"{tuple_delimiter}"技术"{tuple_delimiter}"设备是故事的核心，具有潜在的改变游戏规则的意义，并受到泰勒的敬畏。"){record_delimiter}
+("entity"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"person"{tuple_delimiter}"亚历克斯是一个角色，他经历了挫败感，并观察到其他角色之间的动态。"){record_delimiter}
+("entity"{tuple_delimiter}"泰勒"{tuple_delimiter}"person"{tuple_delimiter}"泰勒被描绘成具有权威确定性，并对设备表现出一瞬间的敬畏，表明其观点的变化。"){record_delimiter}
+("entity"{tuple_delimiter}"乔丹"{tuple_delimiter}"person"{tuple_delimiter}"乔丹对发现的共同承诺，并与泰勒就设备有重要互动。"){record_delimiter}
+("entity"{tuple_delimiter}"克鲁兹"{tuple_delimiter}"person"{tuple_delimiter}"克鲁兹与控制和秩序的愿景相关，影响了其他角色之间的动态。"){record_delimiter}
+("entity"{tuple_delimiter}"设备"{tuple_delimiter}"technology"{tuple_delimiter}"设备是故事的核心，具有潜在的改变游戏规则的意义，并受到泰勒的敬畏。"){record_delimiter}
 ("relationship"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"泰勒"{tuple_delimiter}"亚历克斯受到泰勒权威确定性的影响，并观察到泰勒对设备态度的变化。"{tuple_delimiter}"权力动态, 观点变化"{tuple_delimiter}7){record_delimiter}
 ("relationship"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"乔丹"{tuple_delimiter}"亚历克斯和乔丹对发现的共同承诺，与克鲁兹的愿景形成对比。"{tuple_delimiter}"共同目标, 反抗"{tuple_delimiter}6){record_delimiter}
 ("relationship"{tuple_delimiter}"泰勒"{tuple_delimiter}"乔丹"{tuple_delimiter}"泰勒和乔丹就设备直接互动，导致一瞬间的相互尊重和不安的休战。"{tuple_delimiter}"冲突解决, 相互尊重"{tuple_delimiter}8){record_delimiter}
@@ -65,7 +65,7 @@ PROMPTS_ZH["entity_extraction"] = """-目标-
 #############################
 示例2：
 
-实体类型：[人, 技术, 任务, 组织, 地点]
+实体类型：[person, technology, mission, organization, location]
 文本：
 他们不再只是普通的操作人员；他们已经成为门槛的守护者，来自星条旗之外领域的信息的守护者。他们任务的提升不能被法规和既定协议所束缚——它需要新的视角和新的决心。
 
@@ -74,16 +74,16 @@ PROMPTS_ZH["entity_extraction"] = """-目标-
 他们与星星的联系巩固了，团队开始应对日益清晰的警告，从被动的接收者转变为积极的参与者。梅瑟的后期本能占据了上风——团队的任务已经演变，不再只是观察和报告，而是互动和准备。一场变革已经开始，杜尔塞行动以他们大胆的新频率嗡嗡作响，这种基调不是由地球上的
 #############
 输出：
-("entity"{tuple_delimiter}"华盛顿"{tuple_delimiter}"地点"{tuple_delimiter}"华盛顿是一个接收通讯的地点，表明其在决策过程中的重要性。"){record_delimiter}
-("entity"{tuple_delimiter}"杜尔塞行动"{tuple_delimiter}"任务"{tuple_delimiter}"杜尔塞行动被描述为一个任务，其目标已经演变为互动和准备，表明目标和活动的重大变化。"){record_delimiter}
-("entity"{tuple_delimiter}"团队"{tuple_delimiter}"组织"{tuple_delimiter}"团队被描绘为一群从被动观察者转变为任务积极参与者的个体，显示了他们角色的动态变化。"){record_delimiter}
+("entity"{tuple_delimiter}"华盛顿"{tuple_delimiter}"location"{tuple_delimiter}"华盛顿是一个接收通讯的地点，表明其在决策过程中的重要性。"){record_delimiter}
+("entity"{tuple_delimiter}"杜尔塞行动"{tuple_delimiter}"mission"{tuple_delimiter}"杜尔塞行动被描述为一个任务，其目标已经演变为互动和准备，表明目标和活动的重大变化。"){record_delimiter}
+("entity"{tuple_delimiter}"团队"{tuple_delimiter}"organization"{tuple_delimiter}"团队被描绘为一群从被动观察者转变为任务积极参与者的个体，显示了他们角色的动态变化。"){record_delimiter}
 ("relationship"{tuple_delimiter}"团队"{tuple_delimiter}"华盛顿"{tuple_delimiter}"团队接收来自华盛顿的通讯，影响他们的决策过程。"{tuple_delimiter}"决策, 外部影响"{tuple_delimiter}7){record_delimiter}
 ("relationship"{tuple_delimiter}"团队"{tuple_delimiter}"杜尔塞行动"{tuple_delimiter}"团队直接参与杜尔塞行动，执行其演变的目标和活动。"{tuple_delimiter}"任务演变, 积极参与"{tuple_delimiter}9){completion_delimiter}
 ("content_keywords"{tuple_delimiter}"任务演变, 决策, 积极参与, 宇宙意义"){completion_delimiter}
 #############################
 示例3：
 
-实体类型：[人, 角色, 技术, 组织, 事件, 地点, 概念]
+实体类型：[person, role, technology, organization, event, location, concept]
 文本：
 他们的声音穿过活动的嗡嗡声。“在面对一个字面上自己制定规则的智能时，控制可能是一种幻觉，”他们冷静地说，目光警惕地扫视着数据的涌动。
 
@@ -96,12 +96,12 @@ PROMPTS_ZH["entity_extraction"] = """-目标-
 加密的对话继续展开，其复杂的模式显示出几乎不可思议的预见性
 #############
 输出：
-("entity"{tuple_delimiter}"萨姆·里维拉"{tuple_delimiter}"人"{tuple_delimiter}"萨姆·里维拉是一个团队成员，正在与未知智能交流，表现出敬畏和焦虑的混合。"){record_delimiter}
-("entity"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"人"{tuple_delimiter}"亚历克斯是一个团队的领导者，试图与未知智能进行第一次接触，承认任务的重要性。"){record_delimiter}
-("entity"{tuple_delimiter}"控制"{tuple_delimiter}"概念"{tuple_delimiter}"控制指的是管理或治理的能力，这在一个自己制定规则的智能面前受到挑战。"){record_delimiter}
-("entity"{tuple_delimiter}"智能"{tuple_delimiter}"概念"{tuple_delimiter}"智能在这里指的是一个能够自己制定规则并学习交流的未知实体。"){record_delimiter}
-("entity"{tuple_delimiter}"第一次接触"{tuple_delimiter}"事件"{tuple_delimiter}"第一次接触是人类与未知智能之间的潜在初次交流。"){record_delimiter}
-("entity"{tuple_delimiter}"人类的回应"{tuple_delimiter}"事件"{tuple_delimiter}"人类的回应是亚历克斯团队对来自未知智能的信息的集体行动。"){record_delimiter}
+("entity"{tuple_delimiter}"萨姆·里维拉"{tuple_delimiter}"person"{tuple_delimiter}"萨姆·里维拉是一个团队成员，正在与未知智能交流，表现出敬畏和焦虑的混合。"){record_delimiter}
+("entity"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"person"{tuple_delimiter}"亚历克斯是一个团队的领导者，试图与未知智能进行第一次接触，承认任务的重要性。"){record_delimiter}
+("entity"{tuple_delimiter}"控制"{tuple_delimiter}"concept"{tuple_delimiter}"控制指的是管理或治理的能力，这在一个自己制定规则的智能面前受到挑战。"){record_delimiter}
+("entity"{tuple_delimiter}"智能"{tuple_delimiter}"concept"{tuple_delimiter}"智能在这里指的是一个能够自己制定规则并学习交流的未知实体。"){record_delimiter}
+("entity"{tuple_delimiter}"第一次接触"{tuple_delimiter}"event"{tuple_delimiter}"第一次接触是人类与未知智能之间的潜在初次交流。"){record_delimiter}
+("entity"{tuple_delimiter}"人类的回应"{tuple_delimiter}"event"{tuple_delimiter}"人类的回应是亚历克斯团队对来自未知智能的信息的集体行动。"){record_delimiter}
 ("relationship"{tuple_delimiter}"萨姆·里维拉"{tuple_delimiter}"智能"{tuple_delimiter}"萨姆·里维拉直接参与与未知智能的交流过程。"{tuple_delimiter}"交流, 学习过程"{tuple_delimiter}9){record_delimiter}
 ("relationship"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"第一次接触"{tuple_delimiter}"亚历克斯领导的团队可能正在与未知智能进行第一次接触。"{tuple_delimiter}"领导, 探索"{tuple_delimiter}10){record_delimiter}
 ("relationship"{tuple_delimiter}"亚历克斯"{tuple_delimiter}"人类的回应"{tuple_delimiter}"亚历克斯和他的团队是人类对未知智能回应的关键人物。"{tuple_delimiter}"集体行动, 宇宙意义"{tuple_delimiter}8){record_delimiter}

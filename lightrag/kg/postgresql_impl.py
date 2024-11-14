@@ -1,12 +1,11 @@
 import asyncio
 from dataclasses import dataclass
+from typing import Optional
 import numpy as np
 import asyncpg
-from typing import Union
 
-from sympy import N
 from ..utils import logger
-from ..base import BaseVectorStorage
+from ..base import BaseKVStorage, BaseVectorStorage
 
 
 class PostgresDB:
@@ -103,20 +102,20 @@ class PostgresVectorDBStorage(BaseVectorStorage):
     """
     基于PostgreSQL的向量存储实现
     """
-    
+
     cosine_better_than_threshold: float = 0.2
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.db: PostgresDB = None
-        self.table_name = f"light_vectors_{self.namespace}"
+        self.table_name = f"light_{self.namespace}"
         self.cosine_better_than_threshold = self.global_config.get(
             "cosine_better_than_threshold", self.cosine_better_than_threshold
         )
-    
+
     # def __post_init__(self):
     #     """初始化"""
-        
+
     #     # self.db: PostgresDB = None # 需要手动设置
     #     # 创建数据库连接
 
@@ -165,10 +164,12 @@ class PostgresVectorDBStorage(BaseVectorStorage):
         for i, item in enumerate(list_data):
             values = [item["id"], embeddings[i].tolist(), self.db.workspace]
             values.extend(item.get(f, "") for f in self.meta_fields)
-            
+
             # 使用 asyncpg 插入数据时，确保 embedding 转换为适当的 vector 格式
-            values[1] = f'[{",".join(map(str, values[1]))}]'  # 将 embedding 转换为 pgvector 的格式
-            
+            values[1] = (
+                f'[{",".join(map(str, values[1]))}]'  # 将 embedding 转换为 pgvector 的格式
+            )
+
             await self.db.execute(upsert_sql, *values)
 
         return list_data
@@ -178,8 +179,10 @@ class PostgresVectorDBStorage(BaseVectorStorage):
         # 生成query的embedding
         embedding = await self.embedding_func([query])
         embedding = embedding[0]
-        
-        pgvector_embedding = f'[{",".join(map(str, embedding))}]'  # 将 embedding 转换为 pgvector 的格式
+
+        pgvector_embedding = (
+            f'[{",".join(map(str, embedding))}]'  # 将 embedding 转换为 pgvector 的格式
+        )
 
         # 构造查询SQL
         fields = ["id"] + list(self.meta_fields)
@@ -211,3 +214,53 @@ class PostgresVectorDBStorage(BaseVectorStorage):
     async def index_done_callback(self):
         """索引完成回调"""
         pass
+
+    async def delete_entity(self, entity_name: str):
+        """删除实体向量数据"""
+        try:
+            entity_id = self.compute_mdhash_id(entity_name, prefix="ent-")
+            delete_sql = f"""
+            DELETE FROM {self.table_name}
+            WHERE id = $1 AND workspace = $2
+            RETURNING id
+            """
+            result = await self.db.fetch(delete_sql, entity_id, self.db.workspace)
+
+            if result:
+                logger.info(f"Entity {entity_name} has been deleted.")
+            else:
+                logger.info(f"No entity found with name {entity_name}.")
+
+        except Exception as e:
+            logger.error(f"Error while deleting entity {entity_name}: {e}")
+
+    async def delete_relation(self, entity_name: str):
+        """删除与指定实体相关的所有关系向量数据"""
+
+        try:
+            # 查找所有相关关系记录
+            select_sql = f"""
+            SELECT id FROM {self.table_name}
+            WHERE (src_id = $1 OR tgt_id = $1)
+            AND workspace = $2
+            """
+            relations = await self.db.fetch(select_sql, entity_name, self.db.workspace)
+
+            if relations:
+                # 批量删除找到的关系
+                relation_ids = [r["id"] for r in relations]
+                delete_sql = f"""
+                DELETE FROM {self.table_name}
+                WHERE id = ANY($1) AND workspace = $2
+                """
+                await self.db.execute(delete_sql, relation_ids, self.db.workspace)
+                logger.info(
+                    f"All relations related to entity {entity_name} have been deleted."
+                )
+            else:
+                logger.info(f"No relations found for entity {entity_name}.")
+
+        except Exception as e:
+            logger.error(
+                f"Error while deleting relations for entity {entity_name}: {e}"
+            )
