@@ -20,3 +20,5 @@ tiktoken
 torch
 transformers
 xxhash
+
+asyncpg

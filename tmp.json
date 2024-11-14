@@ -1,0 +1,111 @@
+{
+    "rel-19dbb1284e01a67eb15b0956d6d8a3f6": {
+        "src_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "tgt_id": "\"朱君\"",
+        "content": "\"authorship\"\"利用单词超团的二分图文本聚类算法\"\"朱君\"\"朱君 is one of the authors of the paper '利用单词超团的二分图文本聚类算法'.\""
+    },
+    "rel-ee6aca703f11b8ba3d12eeb56f9ce73a": {
+        "src_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "tgt_id": "\"曲超\"",
+        "content": "\"authorship\"\"利用单词超团的二分图文本聚类算法\"\"曲超\"\"曲超 is one of the authors of the paper '利用单词超团的二分图文本聚类算法'.\""
+    },
+    "rel-a1ec58ff394eb26d18c7d6c893e77d8d": {
+        "src_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "tgt_id": "\"汤庸\"",
+        "content": "\"authorship\"\"利用单词超团的二分图文本聚类算法\"\"汤庸\"\"汤庸 is one of the authors of the paper '利用单词超团的二��图文本聚类算法'.\""
+    },
+    "rel-7f7f9406a0f3814f4fbcd975b8314916": {
+        "src_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "tgt_id": "\"电子科技大学学报\"",
+        "content": "\"publication\"\"利用单词超团的二分图文本聚类算法\"\"电子科技大学学报\"\"The paper '利用单词超团的二分图文本聚类算法' was published in the journal 电子科技大学学报.\""
+    },
+    "rel-2e10d7c033d911adc0168db28aaf4578": {
+        "src_id": "\"2008.03\"",
+        "tgt_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "content": "\"publication date\"\"2008.03\"\"利用单词超团的二分图文本聚类算法\"\"The paper '利用单词超团的二分图文本聚类算法' was published on the date 2008.03.\""
+    },
+    "rel-2f7032944c31229506962865494b0b8b": {
+        "src_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "tgt_id": "\"期刊论文\"",
+        "content": "\"classification\"\"利用单词超团的二分图文本聚类算法\"\"期刊论文\"\"The paper '利用单词超团的二分图文本聚类算法' is classified as a 期刊论文 (Journal Article).\""
+    },
+    "rel-c8cb887b8e296774736f3610dece4d7f": {
+        "src_id": "\"UNIVERSITY OF ELECTRONIC SCIENCE AND TECHNOLOGY OF CHINA\"",
+        "tgt_id": "\"电子科技大学学报\"",
+        "content": "\"institutional affiliation\"\"UNIVERSITY OF ELECTRONIC SCIENCE AND TECHNOLOGY OF CHINA\"\"电子科技大学学报\"\"电子科技大学学报 is the journal published by the University of Electronic Science and Technology of China.\""
+    },
+    "rel-e8b0211fcb8a25d24134450a43215d8c": {
+        "src_id": "\"CHINA\"",
+        "tgt_id": "\"UNIVERSITY OF ELECTRONIC SCIENCE AND TECHNOLOGY OF CHINA\"",
+        "content": "\"geographical location\"\"CHINA\"\"UNIVERSITY OF ELECTRONIC SCIENCE AND TECHNOLOGY OF CHINA\"\"The University of Electronic Science and Technology of China is located in China.\""
+    },
+    "rel-7c05b1ebd87efad04841ff73a4d41a10": {
+        "src_id": "\"37(3)\"",
+        "tgt_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "content": "\"publication details\"\"37(3)\"\"利用单词超团的二分图文本聚类算法\"\"The paper '利用单词超团的二分图文本聚类算法' was published in volume 37, issue 3 of the journal 电子科技大学学报.\""
+    },
+    "rel-77cc9b64a043f51ee9e3119b66568e14": {
+        "src_id": "\"439-442\"",
+        "tgt_id": "\"利用单词超团的二分图文本聚类算法\"",
+        "content": "\"page range\"\"439-442\"\"利用单词超团的二分图文本聚类算法\"\"The paper '利用单词超团的二分图文本聚类算法' is found on pages 439-442 in the journal 电子科技大学学报.\""
+    },
+    "rel-ff21fe3366f9d91e3c394d9a1cdfaf48": {
+        "src_id": "\"2008\"",
+        "tgt_id": "\"2008.03\"",
+        "content": "\"temporal relationship\"\"2008\"\"2008.03\"\"The date 2008.03 is part of the year 2008 when the paper '利用单词超团的二分图文本聚类算法' was published.\""
+    },
+    "ent-9d9230a2aeaf2159e4e10f1223fedf5e": {
+        "content": "\"利用单词超团的二分图文本聚类算法\"\"This paper discusses a text clustering algorithm using bipartite graphs of word hypergroups.\"",
+        "entity_name": "\"利用单词超团的二分图文本聚类算法\""
+    },
+    "ent-331955a7a84cf3f9b9ffb39d02700acc": {
+        "content": "\"朱君\"\"朱君 is one of the authors of the paper '利用单词超团的二分图文本聚类算法'.\"",
+        "entity_name": "\"朱君\""
+    },
+    "ent-66b44c6749289ace4c1700f389ba490d": {
+        "content": "\"曲超\"\"曲超 is one of the authors of the paper '利用单词超团的二分图文本聚类算法'.\"",
+        "entity_name": "\"曲超\""
+    },
+    "ent-07064580d380246514eec30e9aa69df8": {
+        "content": "\"汤庸\"\"Tang Yong is one of the authors of the paper '时态知识和时态数据的统一模型研究'.\"<SEP>\"The author of the paper 'An Overview of Computer-Supported Collaborative Work', published in 1999.\"<SEP>\"汤庸 is one of the authors of a paper on the development of interactive web-based courseware systems.\"<SEP>\"汤庸 is one of the authors of the paper '基于描述逻辑的CIM模型', published in 微电子学与计算机 in 2007.\"<SEP>\"汤庸 is one of the authors of the paper '基于描述逻辑的带属性依赖时序ER模型', published in 2007.\"<SEP>\"汤庸 is one of the authors of the paper '基于时限的角色访问控制委托模型', contributing to research in computer science.\"<SEP>\"汤庸是该论文的作者之一，与叶小平共同研究时态变量“Now”的语义及相应时态关系运算。\"<SEP>\"汤庸是该论文的作者之一。\"<SEP>\"汤庸 is one of the authors of the paper '基于XML的自动学习Web信息抽取' (Automatic Web Information Extraction Based on XML).\"<SEP>\"汤庸 is one of the authors of the paper '利用单词超团的二分图文本聚类算法'.\"",
+        "entity_name": "\"汤庸\""
+    },
+    "ent-780127f6c7c0aafa5f929a3e3452c0c2": {
+        "content": "\"电子科技大学学报\"\"电子科技大学学报 (Journal of University of Electronic Science and Technology of China) is the journal where the paper '利用单词超团的二分图文本聚类算法' was published.\"",
+        "entity_name": "\"电子科技大学学报\""
+    },
+    "ent-a3d76ae5b8c65fc1fad0f768ea79cc30": {
+        "content": "\"2008.03\"\"2008.03 is the publication date of the paper '基于XML的自动学习Web信息抽取' (Automatic Web Information Extraction Based on XML).\"<SEP>\"2008.03 is the specific date when the paper '基于时限的角色访问控制委托模型' was published.\"<SEP>\"The date when the paper '利用单词超团的二分图文本聚类算法' was published.\"",
+        "entity_name": "\"2008.03\""
+    },
+    "ent-fd2eea2cc85b1203faf18a258074d945": {
+        "content": "\"期刊论文\"\"The type of the publication, which is a journal paper.\"<SEP>\"期刊论文 is the type of publication for the paper '基于时限的角色访问控制委托模型', indicating it is a journal article.\"<SEP>\"期刊论文 is the type of publication for the paper '时态变量“Now”语义及相应时态关系运算'.\"<SEP>\"期刊论文是指在学术期刊上发表的研究成果。\"<SEP>\"期刊论文 (Journal Paper) is the type of publication for the paper '基于XML的自动学习Web信息抽取' (Automatic Web Information Extraction Based on XML).\"<SEP>\"期刊论文 (Journal Article) is the type of the publication '利用单词超团的二分图文本聚类算法'.\"",
+        "entity_name": "\"期刊论文\""
+    },
+    "ent-1c61b2e033965a4916d569383d71a055": {
+        "content": "\"UNIVERSITY OF ELECTRONIC SCIENCE AND TECHNOLOGY OF CHINA\"\"University of Electronic Science and Technology of China is the institution associated with the journal 电子科技大学学报.\"",
+        "entity_name": "\"UNIVERSITY OF ELECTRONIC SCIENCE AND TECHNOLOGY OF CHINA\""
+    },
+    "ent-0fff96cab541f9d30c61fbed6293aa53": {
+        "content": "\"CHINA\"\"China is the country where the University of Electronic Science and Technology of China is located.\"",
+        "entity_name": "\"CHINA\""
+    },
+    "ent-5571067e8d33eea43834131f2f227d8d": {
+        "content": "\"2008\"\"2008 is the year in which the paper '基于时限的角色访问控制委托模型' was published in the journal 计算机科学.\"<SEP>\"2008 is the year the paper was published, providing a broader temporal context.\"<SEP>\"2008 is the year when the paper '利用单词超团的二分图文本聚类算法' was published.\"",
+        "entity_name": "\"2008\""
+    },
+    "ent-ac03add5f3da60d0f5b86e0e2599386e": {
+        "content": "\"37(3)\"\"37(3) is the volume and issue number of the journal 电子科技大学学报 where the paper '利用单词超团的二分图文本聚类算法' was published.\"",
+        "entity_name": "\"37(3)\""
+    },
+    "ent-1fc203106952279d9897f2b23353c0d6": {
+        "content": "\"439-442\"\"439-442 are the page numbers of the paper '利用单��超团的二分图文本聚类算法' in the journal 电子科技大学学报.\"",
+        "entity_name": "\"439-442\""
+    },
+    "chunk-ec26a9f4d15c5f8f3cb88867463473e8": {
+        "tokens": 73,
+        "content": "title: 利用单词超团的二分图文本聚类算法\nauthors: 朱君 曲超 汤庸\nsource: 电子科技大学学报，2008，37（3），439-442\nsourceDetail: \ndate: 2008.03\ntype: 期刊论文\nkeyword: \nsummary:",
+        "chunk_order_index": 0,
+        "full_doc_id": "doc-ec26a9f4d15c5f8f3cb88867463473e8"
+    }
+}

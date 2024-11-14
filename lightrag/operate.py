@@ -526,6 +526,7 @@ async def extract_entities(
             }
             for dp in all_entities_data
         }
+        logger.debug(f"[upserting entity] {data_for_vdb}")
         await entity_vdb.upsert(data_for_vdb)
 
     # 更新关系向量数据库
@@ -541,6 +542,7 @@ async def extract_entities(
             }
             for dp in all_relationships_data
         }
+        logger.debug(f"[upserting relationship] {data_for_vdb}")
         await relationships_vdb.upsert(data_for_vdb)
 
     return knowledge_graph_inst
