@@ -184,9 +184,7 @@ class LightRAG:
 
         # 实体关系图数据库表，存储实体之间的关系，见 graph_chunk_entity_relation.graphml
         self.chunk_entity_relation_graph = self.graph_storage_cls(
-            namespace="chunk_entity_relation",
-            global_config=asdict(self),
-            embedding_func=self.embedding_func,
+            namespace="chunk_entity_relation", global_config=asdict(self)
         )
         ####
         # add embedding func by walter over
@@ -280,6 +278,7 @@ class LightRAG:
             None
         """
 
+        update_storage = False
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
@@ -293,6 +292,7 @@ class LightRAG:
             if not len(new_docs):
                 logger.warning("All docs are already in the storage")
                 return
+            update_storage = True
             logger.info(f"[New Docs] inserting {len(new_docs)} docs")
 
             # chunking
@@ -344,7 +344,8 @@ class LightRAG:
         except Exception as e:
             logger.error(f"Error while inserting: {e}")
         finally:
-            await self._insert_done()
+            if update_storage:
+                await self._insert_done()
 
     async def _insert_done(self):
         tasks = []
