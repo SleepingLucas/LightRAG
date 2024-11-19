@@ -4,6 +4,8 @@ import re
 from typing import Any, Generator, Optional, Union
 from collections import Counter, defaultdict
 import warnings
+
+from lightrag.prompt_zh import PROMPTS_ZH
 from .utils import (
     logger,
     clean_str,
@@ -27,7 +29,9 @@ from .base import (
     RelationshipDict,
     QueryParam,
 )
-from .prompt import GRAPH_FIELD_SEP, PROMPTS
+from .prompt_zh import GRAPH_FIELD_SEP, PROMPTS_ZH
+
+NOW_PROMPTS = PROMPTS_ZH
 
 
 def chunking_by_token_size(
@@ -88,7 +92,7 @@ async def _handle_entity_relation_summary(
         return description
 
     # 准备摘要的提示模板
-    prompt_template = PROMPTS["summarize_entity_descriptions"]
+    prompt_template = NOW_PROMPTS["summarize_entity_descriptions"]
 
     # 截断描述使其符合 LLM 的最大 token 数
     use_description = decode_tokens_by_tiktoken(
@@ -383,15 +387,15 @@ async def extract_entities(
 
     ordered_chunks = list(chunks.items())
 
-    entity_extract_prompt = PROMPTS["entity_extraction"]    # 实体及关系提取
+    entity_extract_prompt = NOW_PROMPTS["entity_extraction"]    # 实体及关系提取
     context_base = dict(
-        tuple_delimiter=PROMPTS["DEFAULT_TUPLE_DELIMITER"],
-        record_delimiter=PROMPTS["DEFAULT_RECORD_DELIMITER"],
-        completion_delimiter=PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
-        entity_types=",".join(PROMPTS["DEFAULT_ENTITY_TYPES"]),
+        tuple_delimiter=NOW_PROMPTS["DEFAULT_TUPLE_DELIMITER"],
+        record_delimiter=NOW_PROMPTS["DEFAULT_RECORD_DELIMITER"],
+        completion_delimiter=NOW_PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
+        entity_types=",".join(NOW_PROMPTS["DEFAULT_ENTITY_TYPES"]),
     )
-    continue_prompt = PROMPTS["entiti_continue_extraction"]   # 继续提取
-    if_loop_prompt = PROMPTS["entiti_if_loop_extraction"]   # 是否继续提取
+    continue_prompt = NOW_PROMPTS["entiti_continue_extraction"]   # 继续提取
+    if_loop_prompt = NOW_PROMPTS["entiti_if_loop_extraction"]   # 是否继续提取
 
     already_processed = 0
     already_entities = 0
@@ -471,8 +475,8 @@ async def extract_entities(
         already_processed += 1
         already_entities += len(maybe_nodes)
         already_relations += len(maybe_edges)
-        now_ticks = PROMPTS["process_tickers"][
-            already_processed % len(PROMPTS["process_tickers"])
+        now_ticks = NOW_PROMPTS["process_tickers"][
+            already_processed % len(NOW_PROMPTS["process_tickers"])
         ]
         print(
             f"{now_ticks} Processed {already_processed} chunks, {already_entities} entities(duplicated), {already_relations} relations(duplicated)\r",
@@ -575,7 +579,7 @@ async def local_query(
     context = None
     use_model_func = global_config["llm_model_func"]
 
-    kw_prompt_temp = PROMPTS["keywords_extraction"] # 关键词提取
+    kw_prompt_temp = NOW_PROMPTS["keywords_extraction"] # 关键词提取
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
     json_text = locate_json_string_body_from_string(result)
@@ -600,7 +604,7 @@ async def local_query(
         # Handle parsing error
         except json.JSONDecodeError as e:
             print(f"JSON parsing error: {e}")
-            return PROMPTS["fail_response"]
+            return NOW_PROMPTS["fail_response"]
         
     if keywords:
         logger.debug(f"local query 提取出的关键词 {keywords}")
@@ -616,8 +620,8 @@ async def local_query(
     if query_param.only_need_context:
         return context
     if context is None:
-        return PROMPTS["fail_response"]
-    sys_prompt_temp = PROMPTS["rag_response"]
+        return NOW_PROMPTS["fail_response"]
+    sys_prompt_temp = NOW_PROMPTS["rag_response"]
     sys_prompt = sys_prompt_temp.format(
         context_data=context, response_type=query_param.response_type
     )
@@ -926,7 +930,7 @@ async def global_query(
     context = None
     use_model_func = global_config["llm_model_func"]
 
-    kw_prompt_temp = PROMPTS["keywords_extraction"]
+    kw_prompt_temp = NOW_PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
     json_text = locate_json_string_body_from_string(result)
@@ -954,7 +958,7 @@ async def global_query(
         except json.JSONDecodeError as e:
             # 处理解析错误
             print(f"JSON parsing error: {e}")
-            return PROMPTS["fail_response"]
+            return NOW_PROMPTS["fail_response"]
         
     if keywords:
         context = await _build_global_query_context(
@@ -969,9 +973,9 @@ async def global_query(
     if query_param.only_need_context:
         return context
     if context is None:
-        return PROMPTS["fail_response"]
+        return NOW_PROMPTS["fail_response"]
 
-    sys_prompt_temp = PROMPTS["rag_response"]
+    sys_prompt_temp = NOW_PROMPTS["rag_response"]
     sys_prompt = sys_prompt_temp.format(
         context_data=context, response_type=query_param.response_type
     )
@@ -1250,7 +1254,7 @@ async def hybrid_query(
     high_level_context = None
     use_model_func = global_config["llm_model_func"]
 
-    kw_prompt_temp = PROMPTS["keywords_extraction"]
+    kw_prompt_temp = NOW_PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
 
     result = await use_model_func(kw_prompt)
@@ -1278,7 +1282,7 @@ async def hybrid_query(
         # Handle parsing error
         except json.JSONDecodeError as e:
             print(f"JSON parsing error: {e}")
-            return PROMPTS["fail_response"]
+            return NOW_PROMPTS["fail_response"]
 
     if ll_keywords:
         low_level_context = await _build_local_query_context(
@@ -1305,9 +1309,9 @@ async def hybrid_query(
     if query_param.only_need_context:
         return context
     if context is None:
-        return PROMPTS["fail_response"]
+        return NOW_PROMPTS["fail_response"]
 
-    sys_prompt_temp = PROMPTS["rag_response"]
+    sys_prompt_temp = NOW_PROMPTS["rag_response"]
     sys_prompt = sys_prompt_temp.format(
         context_data=context, response_type=query_param.response_type
     )
@@ -1426,7 +1430,7 @@ async def naive_query(
     # 直接从向量数据库中查询文本块，相当于普通 RAG 
     results = await chunks_vdb.query(query, top_k=query_param.top_k)
     if not len(results):
-        return PROMPTS["fail_response"]
+        return NOW_PROMPTS["fail_response"]
     chunks_ids = [r["id"] for r in results]
     chunks = await text_chunks_db.get_by_ids(chunks_ids)
 
@@ -1439,7 +1443,7 @@ async def naive_query(
     section = "--New Chunk--\n".join([c["content"] for c in maybe_trun_chunks])
     if query_param.only_need_context:
         return section
-    sys_prompt_temp = PROMPTS["naive_rag_response"]
+    sys_prompt_temp = NOW_PROMPTS["naive_rag_response"]
     sys_prompt = sys_prompt_temp.format(
         content_data=section, response_type=query_param.response_type
     )

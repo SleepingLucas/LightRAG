@@ -1,4 +1,4 @@
-GRAPH_FIELD_SEP_ZH = "<SEP>"
+GRAPH_FIELD_SEP = "<SEP>"
 
 PROMPTS_ZH = {}
 

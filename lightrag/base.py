@@ -78,6 +78,7 @@ class BaseVectorStorage(StorageNameSpace):
 @dataclass
 class BaseKVStorage(Generic[T], StorageNameSpace):
     embedding_func: EmbeddingFunc
+    meta_fields: set = field(default_factory=set)
 
     async def all_keys(self) -> list[str]:
         raise NotImplementedError

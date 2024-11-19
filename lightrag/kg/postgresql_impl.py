@@ -1,266 +1,264 @@
-import asyncio
+import contextlib
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime
+import asyncio
+import os
+from typing import AsyncGenerator, TypeVar, Union
+from typing import (
+    cast as typing_cast,
+)
 import numpy as np
-import asyncpg
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Text, Integer, DateTime, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import text
+from sqlalchemy import func, select, desc
+from sqlalchemy.orm import (
+    scoped_session,
+)
 
 from ..utils import logger
-from ..base import BaseKVStorage, BaseVectorStorage
+from ..base import BaseVectorStorage
+
+T = TypeVar("T")
 
 
-class PostgresDB:
-    """PostgreSQL数据库连接管理类"""
+# Storage Factory
+class PostgresStorageFactory:
+    """PostgreSQL存储工厂类"""
+    
+    @staticmethod
+    def get_storage_class(namespace: str) -> type[BaseVectorStorage]:
+        """根据namespace返回对应的存储类"""
+        storage_map = {
+            "chunks": ChunkStorage,
+            "entities": EntityStorage, 
+            "relationships": RelationshipStorage
+        }
+        
+        if namespace not in storage_map:
+            raise ValueError(f"Unknown namespace: {namespace}")
+            
+        return storage_map[namespace]
 
-    def __init__(self, config):
-        self.host = config.get("host", "localhost")
-        self.port = config.get("port", 6024)
-        self.database = config.get("database", "postgres")
-        self.user = config.get("user", "postgres")
-        self.password = config.get("password", "123456")
+# Base Models and Database Connection
+class Base(DeclarativeBase):
+    """SQLAlchemy 模型基类"""
+
+    pass
+
+
+class VectorModel(Base):
+    """向量存储基础模型类"""
+
+    __abstract__ = True
+
+    # 删除类变量vector_dim,改为在实例化时动态设置
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workspace: Mapped[str] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text)
+    createtime: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updatetime: Mapped[datetime] = mapped_column(
+        DateTime, onupdate=func.now(), nullable=True
+    )
+
+
+class ChunkModel(VectorModel):
+    """文本块向量模型"""
+
+    __tablename__ = "light_chunks"
+
+    full_doc_id: Mapped[str] = mapped_column(Text)
+    tokens: Mapped[int] = mapped_column(Integer)
+    chunk_order_index: Mapped[int] = mapped_column(Integer)
+
+
+class EntityModel(VectorModel):
+    """实体向量模型"""
+
+    __tablename__ = "light_entities"
+
+    entity_name: Mapped[str] = mapped_column(Text)
+
+
+class RelationshipModel(VectorModel):
+    """关系向量模型"""
+
+    __tablename__ = "light_relationships"
+
+    src_id: Mapped[str] = mapped_column(Text)
+    tgt_id: Mapped[str] = mapped_column(Text)
+
+
+# Storage Implementation
+class PostgresVectorStorage:
+    """PostgreSQL向量存储实现类"""
+
+    def __init__(self, model_cls: type[VectorModel], config: dict, embedding_func=None):
+        """初始化存储"""
+        self.model = model_cls
         self.workspace = config.get("workspace", "default")
-        self.pool = None
 
-    async def init_pool(self):
-        """初始化连接池"""
-        try:
-            self.pool = await asyncpg.create_pool(
-                host=self.host,
-                port=self.port,
-                database=self.database,
-                user=self.user,
-                password=self.password,
-                min_size=1,
-                max_size=10,
+        # 动态设置embedding字段
+        if embedding_func:
+            self.vector_dim = embedding_func.embedding_dim
+            # 动态添加embedding列
+            if not hasattr(self.model, "embedding"):
+                self.model.embedding = mapped_column(
+                    Vector(self.vector_dim), nullable=False
+                )
+
+        # 构建数据库连接URL
+        url = "postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}".format(
+            host=os.environ.get("POSTGRES_HOST", "localhost"),
+            port=os.environ.get("POSTGRES_PORT", 5432),
+            user=os.environ.get("POSTGRES_USER", "postgres"),
+            password=os.environ.get("POSTGRES_PASSWORD", "postgres"),
+            database=os.environ.get("POSTGRES_DB", "postgres"),
+        )
+
+        # 创建异步引擎
+        self.engine = create_async_engine(url)
+        self.session_maker: Union[scoped_session, async_sessionmaker] = async_sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
+        )
+        # self.async_session = async_sessionmaker(
+        #     self.engine, class_=AsyncSession, expire_on_commit=False
+        # )
+        
+    @contextlib.asynccontextmanager
+    async def _make_async_session(self) -> AsyncGenerator[AsyncSession, None]:
+        """Make an async session."""
+        async with self.session_maker() as session:
+            yield typing_cast(AsyncSession, session)
+
+    async def init_tables(self):
+        """创建数据库表"""
+        # 创建pgvector扩展
+        async with self.engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            # 创建表
+            await conn.run_sync(Base.metadata.create_all)
+
+        logger.info(f"Tables created successfully")
+
+    async def upsert(self, data: dict[str, dict], embeddings: np.ndarray):
+        """插入或更新数据"""
+        async with self._make_async_session() as session:
+            for (id_, item), embedding in zip(data.items(), embeddings):
+                # 构造模型实例
+                db_item = self.model(
+                    id=id_,
+                    embedding=embedding.tolist(),
+                    workspace=self.workspace,
+                    content=item["content"],
+                    **self._get_extra_fields(item),
+                )
+
+                # 更新或插入
+                await session.merge(db_item)
+
+            await session.commit()
+
+    async def search(self, query_vector: np.ndarray, top_k: int = 5) -> list[dict]:
+        """向量相似度搜索"""
+        async with self._make_async_session() as session:
+            # 构建查询
+            stmt = (
+                select(
+                    self.model,
+                    # self.model.content,
+                    (1 - self.model.embedding.cosine_distance(query_vector.tolist())).label('similarity')
+                )
+                .where(self.model.workspace == self.workspace)
+                .order_by(desc("similarity"))
+                .limit(top_k)
             )
-            logger.info(f"Connected to PostgreSQL at {self.host}:{self.port}")
-        except Exception as e:
-            logger.error(f"Failed to connect to PostgreSQL: {e}")
-            raise
+            
+            result = await session.execute(stmt)
+            result = result.fetchall()
+            
+            # 格式化结果
+            return [dict(model.__dict__) for model, similarity in result]
 
-    async def execute(self, query: str, *args):
-        """执行SQL"""
-        if not self.pool:
-            await self.init_pool()
-        async with self.pool.acquire() as conn:
-            try:
-                return await conn.execute(query, *args)
-            except Exception as e:
-                logger.error(f"PostgreSQL error: {e}\nQuery: {query}")
-                raise
+    def _get_extra_fields(self, item: dict) -> dict:
+        """获取模型特定的额外字段"""
+        if self.model == ChunkModel:
+            return {
+                "full_doc_id": item.get("full_doc_id"),
+                "tokens": item.get("tokens"),
+                "chunk_order_index": item.get("chunk_order_index"),
+            }
+        elif self.model == EntityModel:
+            return {"entity_name": item.get("entity_name")}
+        elif self.model == RelationshipModel:
+            return {"src_id": item.get("src_id"), "tgt_id": item.get("tgt_id")}
+        return {}
 
-    async def fetch(self, query: str, *args):
-        """查询数据"""
-        if not self.pool:
-            await self.init_pool()
-        async with self.pool.acquire() as conn:
-            try:
-                return await conn.fetch(query, *args)
-            except Exception as e:
-                logger.error(f"PostgreSQL error: {e}\nQuery: {query}")
-                raise
 
-    async def create_extension(self):
-        """安装pgvector扩展"""
-        await self.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+# Wrapper Classes
+@dataclass
+class ChunkStorage(BaseVectorStorage):
+    """文本块向量存储封装类"""
 
-    async def create_vector_table(
-        self, table_name: str, dim: int, meta_fields: set = None
-    ):
-        """创建向量表"""
-        # 基础列
-        columns = [
-            "id VARCHAR PRIMARY KEY",
-            f"embedding vector({dim})",
-            "workspace VARCHAR",
-        ]
+    def __post_init__(self):
+        config = self.global_config.get("postgres_config", {})
+        self.storage = PostgresVectorStorage(
+            ChunkModel, config, embedding_func=self.embedding_func
+        )
+        asyncio.create_task(self.storage.init_tables())
+        self.workspace = config.get("workspace", "default")
 
-        # 添加元数据列
-        if meta_fields:
-            for field in meta_fields:
-                columns.append(f"{field} TEXT")
+    async def upsert(self, data: dict[str, dict]):
+        contents = [v["content"] for v in data.values()]
+        embeddings = await self.embedding_func(contents)
+        return await self.storage.upsert(data, embeddings)
 
-        create_table_sql = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
-            {','.join(columns)}
-        );
-        """
-        # print(create_table_sql)
-        await self.execute(create_table_sql)
-
-        # 创建向量索引
-        create_index_sql = f"""
-        CREATE INDEX IF NOT EXISTS {table_name}_embedding_idx 
-        ON {table_name} 
-        USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100);
-        """
-        await self.execute(create_index_sql)
+    async def query(self, query: str, top_k=5) -> list[dict]:
+        embedding = (await self.embedding_func([query]))[0]
+        return await self.storage.search(embedding, top_k)
 
 
 @dataclass
-class PostgresVectorDBStorage(BaseVectorStorage):
-    """
-    基于PostgreSQL的向量存储实现
-    """
+class EntityStorage(BaseVectorStorage):
+    """实体向量存储封装类"""
 
-    cosine_better_than_threshold: float = 0.2
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.db: PostgresDB = None
-        self.table_name = f"light_{self.namespace}"
-        self.cosine_better_than_threshold = self.global_config.get(
-            "cosine_better_than_threshold", self.cosine_better_than_threshold
+    def __post_init__(self):
+        config = self.global_config.get("postgres_config", {})
+        self.storage = PostgresVectorStorage(
+            EntityModel, config, embedding_func=self.embedding_func
         )
-
-    # def __post_init__(self):
-    #     """初始化"""
-
-    #     # self.db: PostgresDB = None # 需要手动设置
-    #     # 创建数据库连接
-
-    async def init_table(self):
-        """初始化表结构"""
-        await self.db.create_extension()
-        await self.db.create_vector_table(
-            self.table_name, self.embedding_func.embedding_dim, self.meta_fields
-        )
+        asyncio.create_task(self.storage.init_tables())
+        self.workspace = config.get("workspace", "default")
 
     async def upsert(self, data: dict[str, dict]):
-        """插入或更新向量数据"""
-        if not data:
-            logger.warning("Empty data to insert")
-            return []
-
-        # 准备数据
-        list_data = [
-            {"id": k, **{k1: v1 for k1, v1 in v.items() if k1 in self.meta_fields}}
-            for k, v in data.items()
-        ]
-
-        # 生成embedding
         contents = [v["content"] for v in data.values()]
-        batches = [
-            contents[i : i + self.global_config["embedding_batch_num"]]
-            for i in range(0, len(contents), self.global_config["embedding_batch_num"])
-        ]
-        embeddings_list = await asyncio.gather(
-            *[self.embedding_func(batch) for batch in batches]
-        )
-        embeddings = np.concatenate(embeddings_list)
-
-        # 构造INSERT语句
-        fields = ["id", "embedding", "workspace"] + list(self.meta_fields)
-        placeholders = [f"${i+1}" for i in range(len(fields))]
-
-        upsert_sql = f"""
-        INSERT INTO {self.table_name} ({','.join(fields)})
-        VALUES ({','.join(placeholders)})
-        ON CONFLICT (id) DO UPDATE SET
-        {','.join([f"{f}=excluded.{f}" for f in fields if f != 'id'])};
-        """
-
-        # 批量插入数据
-        for i, item in enumerate(list_data):
-            values = [item["id"], embeddings[i].tolist(), self.db.workspace]
-            values.extend(item.get(f, "") for f in self.meta_fields)
-
-            # 使用 asyncpg 插入数据时，确保 embedding 转换为适当的 vector 格式
-            values[1] = (
-                f'[{",".join(map(str, values[1]))}]'  # 将 embedding 转换为 pgvector 的格式
-            )
-
-            await self.db.execute(upsert_sql, *values)
-
-        return list_data
+        embeddings = await self.embedding_func(contents)
+        return await self.storage.upsert(data, embeddings)
 
     async def query(self, query: str, top_k=5) -> list[dict]:
-        """向量近邻搜索"""
-        # 生成query的embedding
-        embedding = await self.embedding_func([query])
-        embedding = embedding[0]
+        embedding = (await self.embedding_func([query]))[0]
+        return await self.storage.search(embedding, top_k)
 
-        pgvector_embedding = (
-            f'[{",".join(map(str, embedding))}]'  # 将 embedding 转换为 pgvector 的格式
+@dataclass
+class RelationshipStorage(BaseVectorStorage):
+    """关系向量存储封装类"""
+
+    def __post_init__(self):
+        config = self.global_config.get("postgres_config", {})
+        self.storage = PostgresVectorStorage(
+            RelationshipModel, config, embedding_func=self.embedding_func
         )
+        asyncio.create_task(self.storage.init_tables())
+        self.workspace = config.get("workspace", "default")
 
-        # 构造查询SQL
-        fields = ["id"] + list(self.meta_fields)
-        query_sql = f"""
-        SELECT {','.join(fields)}, 
-               1 - (embedding <=> $1::vector) as similarity
-        FROM {self.table_name}
-        WHERE workspace = $2
-        AND 1 - (embedding <=> $1::vector) > $3
-        ORDER BY embedding <=> $1::vector
-        LIMIT $4;
-        """
+    async def upsert(self, data: dict[str, dict]):
+        contents = [v["content"] for v in data.values()]
+        embeddings = await self.embedding_func(contents)
+        return await self.storage.upsert(data, embeddings)
 
-        # 执行查询
-        results = await self.db.fetch(
-            query_sql,
-            pgvector_embedding,
-            self.db.workspace,
-            self.cosine_better_than_threshold,
-            top_k,
-        )
-
-        # 格式化结果
-        return [
-            {**{k: row[k] for k in fields}, "distance": row["similarity"]}
-            for row in results
-        ]
-
-    async def index_done_callback(self):
-        """索引完成回调"""
-        pass
-
-    async def delete_entity(self, entity_name: str):
-        """删除实体向量数据"""
-        try:
-            entity_id = self.compute_mdhash_id(entity_name, prefix="ent-")
-            delete_sql = f"""
-            DELETE FROM {self.table_name}
-            WHERE id = $1 AND workspace = $2
-            RETURNING id
-            """
-            result = await self.db.fetch(delete_sql, entity_id, self.db.workspace)
-
-            if result:
-                logger.info(f"Entity {entity_name} has been deleted.")
-            else:
-                logger.info(f"No entity found with name {entity_name}.")
-
-        except Exception as e:
-            logger.error(f"Error while deleting entity {entity_name}: {e}")
-
-    async def delete_relation(self, entity_name: str):
-        """删除与指定实体相关的所有关系向量数据"""
-
-        try:
-            # 查找所有相关关系记录
-            select_sql = f"""
-            SELECT id FROM {self.table_name}
-            WHERE (src_id = $1 OR tgt_id = $1)
-            AND workspace = $2
-            """
-            relations = await self.db.fetch(select_sql, entity_name, self.db.workspace)
-
-            if relations:
-                # 批量删除找到的关系
-                relation_ids = [r["id"] for r in relations]
-                delete_sql = f"""
-                DELETE FROM {self.table_name}
-                WHERE id = ANY($1) AND workspace = $2
-                """
-                await self.db.execute(delete_sql, relation_ids, self.db.workspace)
-                logger.info(
-                    f"All relations related to entity {entity_name} have been deleted."
-                )
-            else:
-                logger.info(f"No relations found for entity {entity_name}.")
-
-        except Exception as e:
-            logger.error(
-                f"Error while deleting relations for entity {entity_name}: {e}"
-            )
+    async def query(self, query: str, top_k=5) -> list[dict]:
+        embedding = (await self.embedding_func([query]))[0]
+        return await self.storage.search(embedding, top_k)

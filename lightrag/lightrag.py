@@ -43,7 +43,7 @@ from .storage import (
 from .kg.neo4j_impl import Neo4JStorage
 
 from .kg.oracle_impl import OracleKVStorage, OracleGraphStorage, OracleVectorDBStorage
-from .kg.postgresql_impl import PostgresVectorDBStorage
+from .kg.postgresql_impl import PostgresStorageFactory
 
 # future KG integrations
 
@@ -69,6 +69,7 @@ class LightRAG:
     working_dir: str = field(
         default_factory=lambda: f"./lightrag_cache_{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}"
     )
+    workspace: str = "default"
 
     kv_storage: str = field(default="JsonKVStorage")
     vector_storage: str = field(default="NanoVectorDBStorage")
@@ -106,7 +107,9 @@ class LightRAG:
 
     # LLM
     llm_model_func: callable = gpt_4o_mini_complete  # hf_model_complete#
-    llm_model_name: str = "meta-llama/Llama-3.2-1B-Instruct"  #'meta-llama/Llama-3.2-1B'#'google/gemma-2-2b-it'
+    llm_model_name: str = (
+        "meta-llama/Llama-3.2-1B-Instruct"  #'meta-llama/Llama-3.2-1B'#'google/gemma-2-2b-it'
+    )
     llm_model_max_token_size: int = 32768
     llm_model_max_async: int = 16
     llm_model_kwargs: dict = field(default_factory=dict)
@@ -136,12 +139,12 @@ class LightRAG:
         self.key_string_value_json_storage_cls: Type[BaseKVStorage] = (
             self._get_storage_class()[self.kv_storage]
         )
-        
+
         # 向量数据库
         self.vector_db_storage_cls: Type[BaseVectorStorage] = self._get_storage_class()[
             self.vector_storage
         ]
-        
+
         # 图数据库
         self.graph_storage_cls: Type[BaseGraphStorage] = self._get_storage_class()[
             self.graph_storage
@@ -160,7 +163,7 @@ class LightRAG:
             )
             if self.enable_llm_cache
             else None
-        )     
+        )
 
         ####
         # add embedding func by walter
@@ -171,14 +174,14 @@ class LightRAG:
             global_config=asdict(self),
             embedding_func=self.embedding_func,
         )
-        
+
         # 文本块 kv 存储数据库表，存储文本块的 id 与其内容的映射，见 kv_store_text_chunks.json
         self.text_chunks = self.key_string_value_json_storage_cls(
             namespace="text_chunks",
             global_config=asdict(self),
             embedding_func=self.embedding_func,
         )
-        
+
         # 实体关系图数据库表，存储实体之间的关系，见 graph_chunk_entity_relation.graphml
         self.chunk_entity_relation_graph = self.graph_storage_cls(
             namespace="chunk_entity_relation",
@@ -189,34 +192,49 @@ class LightRAG:
         # add embedding func by walter over
         ####
 
-        # 实体数据库，存储实体的 id 与其内容的映射，见 vdb_entities.json
-        self.entities_vdb = self.vector_db_storage_cls(
-            namespace="entities",
-            global_config=asdict(self),
-            embedding_func=self.embedding_func,
-            meta_fields={"entity_name"}
-                        if self.vector_storage == "NanoVectorDBStorage"
-                        else {"entity_name", "content"},
+        # 获取vector storage class
+        self.vector_storage_cls = self._get_storage_class()[self.vector_storage]
+
+        # 实体数据库
+        self.entities_vdb: BaseVectorStorage = (
+            self.vector_storage_cls("entities")(namespace="entities", global_config=asdict(self), embedding_func=self.embedding_func)
+            if self.vector_storage == "PostgresVectorDBStorage"
+            else self.vector_storage_cls(
+                namespace="entities",
+                global_config=asdict(self),
+                embedding_func=self.embedding_func,
+                meta_fields=(
+                    {"entity_name"}
+                ),
+            )
         )
-        
-        # 关系数据库，存储实体之间的关系，见 vdb_relationships.json
-        self.relationships_vdb = self.vector_db_storage_cls(
-            namespace="relationships",
-            global_config=asdict(self),
-            embedding_func=self.embedding_func,
-            meta_fields={"src_id", "tgt_id"}
-                        if self.vector_storage == "NanoVectorDBStorage"
-                        else {"src_id", "tgt_id", "content"},    
+
+        # 关系数据库
+        self.relationships_vdb: BaseVectorStorage = (
+            self.vector_storage_cls("relationships")(namespace="relationships", global_config=asdict(self), embedding_func=self.embedding_func)
+            if self.vector_storage == "PostgresVectorDBStorage"
+            else self.vector_storage_cls(
+                namespace="relationships",
+                global_config=asdict(self),
+                embedding_func=self.embedding_func,
+                meta_fields=(
+                    {"src_id", "tgt_id"}
+                ),
+            )
         )
-        
-        # 文本块数据库，存储文本块的 id 与其内容的映射，见 vdb_chunks.json
-        self.chunks_vdb = self.vector_db_storage_cls(
-            namespace="chunks",
-            global_config=asdict(self),
-            embedding_func=self.embedding_func,
-            meta_fields={} 
-                        if self.vector_storage == "NanoVectorDBStorage" 
-                        else {"full_doc_id", "content", "tokens", "chunk_order_index"},
+
+        # 文本块数据库
+        self.chunks_vdb: BaseVectorStorage = (
+            self.vector_storage_cls("chunks")(namespace="chunks", global_config=asdict(self), embedding_func=self.embedding_func)
+            if self.vector_storage == "PostgresVectorDBStorage"
+            else self.vector_storage_cls(
+                namespace="chunks",
+                global_config=asdict(self),
+                embedding_func=self.embedding_func,
+                meta_fields=(
+                    {}
+                ),
+            )
         )
 
         self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(
@@ -231,17 +249,15 @@ class LightRAG:
             )
         )
 
-    def _get_storage_class(self) -> Type[BaseGraphStorage]:
+    def _get_storage_class(self):
         return {
             # kv storage
             "JsonKVStorage": JsonKVStorage,
             "OracleKVStorage": OracleKVStorage,
-            
             # vector storage
             "NanoVectorDBStorage": NanoVectorDBStorage,
             "OracleVectorDBStorage": OracleVectorDBStorage,
-            "PostgresVectorDBStorage": PostgresVectorDBStorage,
-            
+            "PostgresVectorDBStorage": PostgresStorageFactory.get_storage_class,
             # graph storage
             "NetworkXStorage": NetworkXStorage,
             "Neo4JStorage": Neo4JStorage,
@@ -256,14 +272,14 @@ class LightRAG:
     async def ainsert(self, string_or_strings):
         """
         以字符串或字符串列表的形式插入新的文档。
-        
+
         Args:
             string_or_strings (Union[str, List[str]]): 插入的文档内容
-            
+
         Returns:
             None
         """
-        
+
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
@@ -307,7 +323,7 @@ class LightRAG:
             logger.info(f"[New Chunks] inserting {len(inserting_chunks)} chunks")
 
             logger.debug(f"[upserting chunks] {inserting_chunks}")
-            await self.chunks_vdb.upsert(inserting_chunks)
+            await self.chunks_vdb.upsert(data=inserting_chunks)
 
             logger.info("[Entity Extraction]...")
             maybe_new_kg = await extract_entities(
@@ -324,6 +340,9 @@ class LightRAG:
 
             await self.full_docs.upsert(new_docs)
             await self.text_chunks.upsert(inserting_chunks)
+            
+        except Exception as e:
+            logger.error(f"Error while inserting: {e}")
         finally:
             await self._insert_done()
 

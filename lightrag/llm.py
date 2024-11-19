@@ -29,7 +29,7 @@ import torch
 from pydantic import BaseModel, Field
 from typing import List, Dict, Callable, Any
 from .base import BaseKVStorage
-from .utils import compute_args_hash, wrap_embedding_func_with_attrs
+from .utils import compute_args_hash, wrap_embedding_func_with_attrs, logger
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -71,6 +71,8 @@ async def openai_complete_if_cache(
     )
 
     if hashing_kv is not None:
+        
+        # logger.debug(f'[upsert llm cache] {args_hash}: {{"return": {response.choices[0].message.content}, "model": {model}}}')
         await hashing_kv.upsert(
             {args_hash: {"return": response.choices[0].message.content, "model": model}}
         )
@@ -709,7 +711,7 @@ async def ollama_embedding(texts: list[str], embed_model, **kwargs) -> np.ndarra
         data = ollama_client.embed(model=embed_model, input=text)
         embed_text.append(data["embeddings"][0])
 
-    return embed_text
+    return np.array(embed_text)
 
 
 class Model(BaseModel):

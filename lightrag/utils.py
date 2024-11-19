@@ -27,7 +27,7 @@ def set_logger(log_file: str):
     file_handler.setLevel(logging.DEBUG)
 
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
     )
     file_handler.setFormatter(formatter)
 
@@ -158,6 +158,8 @@ def clean_str(input: Any) -> str:
 
     result = html.unescape(input.strip())
     # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python
+    if result[0] == '"' and result[-1] == '"':
+        result = result[1:-1]
     return re.sub(r"[\x00-\x1f\x7f-\x9f]", "", result)
 
 
