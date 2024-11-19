@@ -11,10 +11,10 @@ import numpy as np
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Text, Integer, DateTime, func
+from sqlalchemy import Text, Integer, DateTime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import text
-from sqlalchemy import func, select, desc
+from sqlalchemy import func, select, desc, delete
 from sqlalchemy.orm import (
     scoped_session,
 )
@@ -28,20 +28,21 @@ T = TypeVar("T")
 # Storage Factory
 class PostgresStorageFactory:
     """PostgreSQL存储工厂类"""
-    
+
     @staticmethod
     def get_storage_class(namespace: str) -> type[BaseVectorStorage]:
         """根据namespace返回对应的存储类"""
         storage_map = {
             "chunks": ChunkStorage,
-            "entities": EntityStorage, 
-            "relationships": RelationshipStorage
+            "entities": EntityStorage,
+            "relationships": RelationshipStorage,
         }
-        
+
         if namespace not in storage_map:
             raise ValueError(f"Unknown namespace: {namespace}")
-            
+
         return storage_map[namespace]
+
 
 # Base Models and Database Connection
 class Base(DeclarativeBase):
@@ -121,13 +122,13 @@ class PostgresVectorStorage:
 
         # 创建异步引擎
         self.engine = create_async_engine(url)
-        self.session_maker: Union[scoped_session, async_sessionmaker] = async_sessionmaker(
-            self.engine, class_=AsyncSession, expire_on_commit=False
+        self.session_maker: Union[scoped_session, async_sessionmaker] = (
+            async_sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
         )
         # self.async_session = async_sessionmaker(
         #     self.engine, class_=AsyncSession, expire_on_commit=False
         # )
-        
+
     @contextlib.asynccontextmanager
     async def _make_async_session(self) -> AsyncGenerator[AsyncSession, None]:
         """Make an async session."""
@@ -170,18 +171,56 @@ class PostgresVectorStorage:
                 select(
                     self.model,
                     # self.model.content,
-                    (1 - self.model.embedding.cosine_distance(query_vector.tolist())).label('similarity')
+                    (
+                        1 - self.model.embedding.cosine_distance(query_vector.tolist())
+                    ).label("similarity"),
                 )
                 .where(self.model.workspace == self.workspace)
                 .order_by(desc("similarity"))
                 .limit(top_k)
             )
-            
+
             result = await session.execute(stmt)
             result = result.fetchall()
-            
+
             # 格式化结果
             return [dict(model.__dict__) for model, similarity in result]
+
+    async def delete(self, ids: Union[str, list[str]]):
+        """删除指定id的记录
+
+        Args:
+            ids: 单个id或id列表
+        """
+        if isinstance(ids, str):
+            ids = [ids]
+
+        async with self._make_async_session() as session:
+            # 构建删除语句
+            stmt = delete(self.model).where(self.model.id.in_(ids))
+            await session.execute(stmt)
+            await session.commit()
+
+    async def delete_by_field(self, field_name: str, value: str):
+        """根据字段值删除记录
+
+        Args:
+            field_name: 字段名
+            value: 字段值
+        """
+
+        if not hasattr(self.model, field_name):
+            raise ValueError(
+                f"Field {field_name} not found in model {self.model.__name__}"
+            )
+
+        field = getattr(self.model, field_name)
+
+        async with self._make_async_session() as session:
+            # 构建删除语句
+            stmt = delete(self.model).where(field == value)
+            await session.execute(stmt)
+            await session.commit()
 
     def _get_extra_fields(self, item: dict) -> dict:
         """获取模型特定的额外字段"""
@@ -242,6 +281,15 @@ class EntityStorage(BaseVectorStorage):
         embedding = (await self.embedding_func([query]))[0]
         return await self.storage.search(embedding, top_k)
 
+    async def delete_entity(self, entity_name: str):
+        try:
+            # 根据entity_name删除实体
+            await self.storage.delete_by_field("entity_name", entity_name)
+            logger.info(f"Entity {entity_name} deleted.")
+        except Exception as e:
+            logger.error(f"Error while deleting entity {entity_name}: {e}")
+
+
 @dataclass
 class RelationshipStorage(BaseVectorStorage):
     """关系向量存储封装类"""
@@ -262,3 +310,19 @@ class RelationshipStorage(BaseVectorStorage):
     async def query(self, query: str, top_k=5) -> list[dict]:
         embedding = (await self.embedding_func([query]))[0]
         return await self.storage.search(embedding, top_k)
+
+    async def delete_relation(self, entity_name: str):
+        try:
+            async with self.storage._make_async_session() as session:
+                # 构建删除语句
+                stmt = delete(RelationshipModel).where(
+                    (RelationshipModel.src_id == entity_name)
+                    | (RelationshipModel.tgt_id == entity_name)
+                )
+                await session.execute(stmt)
+                await session.commit()
+            logger.info(f"Relations for entity {entity_name} deleted.")
+        except Exception as e:
+            logger.error(
+                f"Error while deleting relations for entity {entity_name}: {e}"
+            )

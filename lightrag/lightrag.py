@@ -194,7 +194,7 @@ class LightRAG:
         self.vector_storage_cls = self._get_storage_class()[self.vector_storage]
 
         # 实体数据库
-        self.entities_vdb: BaseVectorStorage = (
+        self.entities_vdb: Type[BaseVectorStorage] = (
             self.vector_storage_cls("entities")(namespace="entities", global_config=asdict(self), embedding_func=self.embedding_func)
             if self.vector_storage == "PostgresVectorDBStorage"
             else self.vector_storage_cls(
@@ -208,7 +208,7 @@ class LightRAG:
         )
 
         # 关系数据库
-        self.relationships_vdb: BaseVectorStorage = (
+        self.relationships_vdb: Type[BaseVectorStorage] = (
             self.vector_storage_cls("relationships")(namespace="relationships", global_config=asdict(self), embedding_func=self.embedding_func)
             if self.vector_storage == "PostgresVectorDBStorage"
             else self.vector_storage_cls(
@@ -222,7 +222,7 @@ class LightRAG:
         )
 
         # 文本块数据库
-        self.chunks_vdb: BaseVectorStorage = (
+        self.chunks_vdb: Type[BaseVectorStorage] = (
             self.vector_storage_cls("chunks")(namespace="chunks", global_config=asdict(self), embedding_func=self.embedding_func)
             if self.vector_storage == "PostgresVectorDBStorage"
             else self.vector_storage_cls(
@@ -424,7 +424,7 @@ class LightRAG:
         return loop.run_until_complete(self.adelete_by_entity(entity_name))
 
     async def adelete_by_entity(self, entity_name: str):
-        entity_name = f'"{entity_name.upper()}"'
+        entity_name = f'{entity_name.upper()}'
 
         try:
             await self.entities_vdb.delete_entity(entity_name)
