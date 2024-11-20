@@ -39,11 +39,11 @@ class QueryParam:
     # Number of top-k items to retrieve; corresponds to entities in "local" mode and relationships in "global" mode.
     top_k: int = 60
     # Number of tokens for the original chunks.
-    max_token_for_text_unit: int = 4000
+    max_token_for_text_unit: int = 2000
     # Number of tokens for the relationship descriptions
-    max_token_for_global_context: int = 4000
+    max_token_for_global_context: int = 2000
     # Number of tokens for the entity descriptions
-    max_token_for_local_context: int = 4000
+    max_token_for_local_context: int = 2000
 
 
 @dataclass

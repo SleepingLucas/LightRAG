@@ -235,6 +235,14 @@ class PostgresVectorStorage:
         elif self.model == RelationshipModel:
             return {"src_id": item.get("src_id"), "tgt_id": item.get("tgt_id")}
         return {}
+    
+    def ensure_event_loop(self):
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        return loop
 
 
 # Wrapper Classes
@@ -243,11 +251,12 @@ class ChunkStorage(BaseVectorStorage):
     """文本块向量存储封装类"""
 
     def __post_init__(self):
-        config = self.global_config.get("postgres_config", {})
+        config = self.global_config
         self.storage = PostgresVectorStorage(
             ChunkModel, config, embedding_func=self.embedding_func
         )
-        asyncio.create_task(self.storage.init_tables())
+        loop = self.storage.ensure_event_loop()
+        loop.create_task(self.storage.init_tables())
         self.workspace = config.get("workspace", "default")
 
     async def upsert(self, data: dict[str, dict]):
@@ -265,11 +274,12 @@ class EntityStorage(BaseVectorStorage):
     """实体向量存储封装类"""
 
     def __post_init__(self):
-        config = self.global_config.get("postgres_config", {})
+        config = self.global_config
         self.storage = PostgresVectorStorage(
             EntityModel, config, embedding_func=self.embedding_func
         )
-        asyncio.create_task(self.storage.init_tables())
+        loop = self.storage.ensure_event_loop()
+        loop.create_task(self.storage.init_tables())
         self.workspace = config.get("workspace", "default")
 
     async def upsert(self, data: dict[str, dict]):
@@ -295,11 +305,12 @@ class RelationshipStorage(BaseVectorStorage):
     """关系向量存储封装类"""
 
     def __post_init__(self):
-        config = self.global_config.get("postgres_config", {})
+        config = self.global_config
         self.storage = PostgresVectorStorage(
             RelationshipModel, config, embedding_func=self.embedding_func
         )
-        asyncio.create_task(self.storage.init_tables())
+        loop = self.storage.ensure_event_loop()
+        loop.create_task(self.storage.init_tables())
         self.workspace = config.get("workspace", "default")
 
     async def upsert(self, data: dict[str, dict]):

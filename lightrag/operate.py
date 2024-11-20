@@ -521,6 +521,8 @@ async def extract_entities(
         )
         return None
 
+    tasks = []
+
     # 更新实体向量数据库
     if entity_vdb is not None:
         data_for_vdb = {
@@ -531,7 +533,8 @@ async def extract_entities(
             for dp in all_entities_data
         }
         logger.debug(f"[upserting entity] {data_for_vdb}")
-        await entity_vdb.upsert(data_for_vdb)
+        # await entity_vdb.upsert(data_for_vdb)
+        tasks.append(entity_vdb.upsert(data_for_vdb))
 
     # 更新关系向量数据库
     if relationships_vdb is not None:
@@ -547,7 +550,11 @@ async def extract_entities(
             for dp in all_relationships_data
         }
         logger.debug(f"[upserting relationship] {data_for_vdb}")
-        await relationships_vdb.upsert(data_for_vdb)
+        # await relationships_vdb.upsert(data_for_vdb)
+        tasks.append(relationships_vdb.upsert(data_for_vdb))
+        
+    if tasks:
+        await asyncio.gather(*tasks)
 
     return knowledge_graph_inst
 
@@ -848,7 +855,7 @@ async def _find_most_related_text_unit_from_entities(
     # 根据最大 token 大小截断文本单元列表
     all_text_units = truncate_list_by_token_size(
         all_text_units,
-        key=lambda x: x["data"]["content"],
+        key=lambda x: json.dumps(x),
         max_token_size=query_param.max_token_for_text_unit,
     )
     
@@ -903,7 +910,7 @@ async def _find_most_related_edges_from_entities(
     )
     all_edges_data = truncate_list_by_token_size(
         all_edges_data,
-        key=lambda x: x["description"],
+        key=lambda x: json.dumps(x),
         max_token_size=query_param.max_token_for_global_context,
     )
     return all_edges_data
@@ -1056,7 +1063,7 @@ async def _build_global_query_context(
     # 截断关系列表以符合最大token数限制
     edge_datas = truncate_list_by_token_size(
         edge_datas,
-        key=lambda x: x["description"],
+        key=lambda x: json.dumps(x),
         max_token_size=query_param.max_token_for_global_context,
     )
 
@@ -1167,7 +1174,7 @@ async def _find_most_related_entities_from_relationships(
     # 根据最大 token 大小截断实体列表
     node_datas = truncate_list_by_token_size(
         node_datas,
-        key=lambda x: x["description"],
+        key=lambda x: json.dumps(x),
         max_token_size=query_param.max_token_for_local_context,
     )
 
@@ -1223,7 +1230,7 @@ async def _find_related_text_unit_from_relationships(
     # 根据最大 token 大小截断文本块列表
     all_text_units = truncate_list_by_token_size(
         all_text_units,
-        key=lambda x: x["data"]["content"],
+        key=lambda x: json.dumps(x),
         max_token_size=query_param.max_token_for_text_unit,
     )
     # 提取文本单元数据
@@ -1442,7 +1449,7 @@ async def naive_query(
 
     maybe_trun_chunks = truncate_list_by_token_size(
         chunks,
-        key=lambda x: x["content"],
+        key=lambda x: json.dumps(x),
         max_token_size=query_param.max_token_for_text_unit,
     )
     logger.info(f"Truncate {len(chunks)} to {len(maybe_trun_chunks)} chunks")

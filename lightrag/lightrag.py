@@ -323,7 +323,6 @@ class LightRAG:
             logger.info(f"[New Chunks] inserting {len(inserting_chunks)} chunks")
 
             logger.debug(f"[upserting chunks] {inserting_chunks}")
-            await self.chunks_vdb.upsert(data=inserting_chunks)
 
             logger.info("[Entity Extraction]...")
             maybe_new_kg = await extract_entities(
@@ -338,8 +337,14 @@ class LightRAG:
                 return
             self.chunk_entity_relation_graph = maybe_new_kg
 
-            await self.full_docs.upsert(new_docs)
-            await self.text_chunks.upsert(inserting_chunks)
+            await asyncio.gather(
+                # 更新切片数据库
+                self.chunks_vdb.upsert(data=inserting_chunks),
+                # 更新全文数据库
+                self.full_docs.upsert(new_docs),
+                # 更新文本块数据库
+                self.text_chunks.upsert(inserting_chunks)
+            )
             
         except Exception as e:
             logger.error(f"Error while inserting: {e}")

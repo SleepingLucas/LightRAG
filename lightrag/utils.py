@@ -2,6 +2,7 @@ import asyncio
 import html
 import io
 import csv
+from itertools import zip_longest
 import json
 import logging
 import os
@@ -279,7 +280,7 @@ def process_combine_contexts(hl, ll) -> str:
     combined_sources = []
     seen = set()
 
-    for item in list_hl + list_ll:
+    for item in [i for pair in zip_longest(list_hl, list_ll) for i in pair if i is not None]:
         if item and item not in seen:
             combined_sources.append(item)
             seen.add(item)
