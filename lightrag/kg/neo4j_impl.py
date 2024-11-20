@@ -61,13 +61,13 @@ class Neo4JStorage(BaseGraphStorage):
         print("KG successfully indexed.")
 
     async def has_node(self, node_id: str) -> bool:
-        entity_name_label = node_id.strip('"')
+        displayName = node_id.strip('"')
 
         async with self._driver.session() as session:
             query = (
-                f"MATCH (n:`{entity_name_label}`) RETURN count(n) > 0 AS node_exists"
+                f"MATCH (n {{displayName: $displayName}}) RETURN count(n) > 0 AS node_exists"
             )
-            result = await session.run(query)
+            result = await session.run(query, displayName=displayName)
             single_result = await result.single()
             logger.debug(
                 f'{inspect.currentframe().f_code.co_name}:query:{query}:result:{single_result["node_exists"]}'
@@ -75,15 +75,15 @@ class Neo4JStorage(BaseGraphStorage):
             return single_result["node_exists"]
 
     async def has_edge(self, source_node_id: str, target_node_id: str) -> bool:
-        entity_name_label_source = source_node_id.strip('"')
-        entity_name_label_target = target_node_id.strip('"')
+        entity_name_source = source_node_id.strip('"')
+        entity_name_target = target_node_id.strip('"')
 
         async with self._driver.session() as session:
             query = (
-                f"MATCH (a:`{entity_name_label_source}`)-[r]-(b:`{entity_name_label_target}`) "
+                f"MATCH (a {{displayName: $entity_name_source}})-[r]-(b {{displayName: $entity_name_target}}) "
                 "RETURN COUNT(r) > 0 AS edgeExists"
             )
-            result = await session.run(query)
+            result = await session.run(query, entity_name_source=entity_name_source, entity_name_target=entity_name_target)
             single_result = await result.single()
             logger.debug(
                 f'{inspect.currentframe().f_code.co_name}:query:{query}:result:{single_result["edgeExists"]}'
@@ -95,9 +95,9 @@ class Neo4JStorage(BaseGraphStorage):
 
     async def get_node(self, node_id: str) -> Union[dict, None]:
         async with self._driver.session() as session:
-            entity_name_label = node_id.strip('"')
-            query = f"MATCH (n:`{entity_name_label}`) RETURN n"
-            result = await session.run(query)
+            entity_name = node_id.strip('"')
+            query = f"MATCH (n {{displayName: $entity_name}}) RETURN n"
+            result = await session.run(query, entity_name=entity_name)
             record = await result.single()
             if record:
                 node = record["n"]
@@ -109,14 +109,14 @@ class Neo4JStorage(BaseGraphStorage):
             return None
 
     async def node_degree(self, node_id: str) -> int:
-        entity_name_label = node_id.strip('"')
+        entity_name = node_id.strip('"')
 
         async with self._driver.session() as session:
             query = f"""
-                MATCH (n:`{entity_name_label}`)
+                MATCH (n {{displayName: $entity_name}})
                 RETURN COUNT{{ (n)--() }} AS totalEdgeCount
             """
-            result = await session.run(query)
+            result = await session.run(query, entity_name=entity_name)
             record = await result.single()
             if record:
                 edge_count = record["totalEdgeCount"]
@@ -128,10 +128,10 @@ class Neo4JStorage(BaseGraphStorage):
                 return None
 
     async def edge_degree(self, src_id: str, tgt_id: str) -> int:
-        entity_name_label_source = src_id.strip('"')
-        entity_name_label_target = tgt_id.strip('"')
-        src_degree = await self.node_degree(entity_name_label_source)
-        trg_degree = await self.node_degree(entity_name_label_target)
+        entity_name_source = src_id.strip('"')
+        entity_name_target = tgt_id.strip('"')
+        src_degree = await self.node_degree(entity_name_source)
+        trg_degree = await self.node_degree(entity_name_target)
 
         # Convert None to 0 for addition
         src_degree = 0 if src_degree is None else src_degree
@@ -146,8 +146,8 @@ class Neo4JStorage(BaseGraphStorage):
     async def get_edge(
         self, source_node_id: str, target_node_id: str
     ) -> Union[dict, None]:
-        entity_name_label_source = source_node_id.strip('"')
-        entity_name_label_target = target_node_id.strip('"')
+        entity_name_source = source_node_id.strip('"')
+        entity_name_target = target_node_id.strip('"')
         """
         Find all edges between nodes of two given labels
 
@@ -160,15 +160,15 @@ class Neo4JStorage(BaseGraphStorage):
         """
         async with self._driver.session() as session:
             query = f"""
-            MATCH (start:`{entity_name_label_source}`)-[r]->(end:`{entity_name_label_target}`)
+            MATCH (start {{displayName: $entity_name_source}})-[r]->(end {{displayName: $entity_name_target}})
             RETURN properties(r) as edge_properties
             LIMIT 1
-            """.format(
-                entity_name_label_source=entity_name_label_source,
-                entity_name_label_target=entity_name_label_target,
-            )
+            """#.format(
+            #     entity_name_source=entity_name_source,
+            #     entity_name_target=entity_name_target,
+            # )
 
-            result = await session.run(query)
+            result = await session.run(query, entity_name_source=entity_name_source, entity_name_target=entity_name_target)
             record = await result.single()
             if record:
                 result = dict(record["edge_properties"])
@@ -180,17 +180,17 @@ class Neo4JStorage(BaseGraphStorage):
                 return None
 
     async def get_node_edges(self, source_node_id: str) -> List[Tuple[str, str]]:
-        node_label = source_node_id.strip('"')
+        node_name = source_node_id.strip('"')
 
         """
         Retrieves all edges (relationships) for a particular node identified by its label.
         :return: List of dictionaries containing edge information
         """
-        query = f"""MATCH (n:`{node_label}`)
+        query = f"""MATCH (n {{displayName: $node_name}})
                 OPTIONAL MATCH (n)-[r]-(connected)
                 RETURN n, r, connected"""
         async with self._driver.session() as session:
-            results = await session.run(query)
+            results = await session.run(query, node_name=node_name)
             edges = []
             async for record in results:
                 source_node = record["n"]
@@ -224,23 +224,27 @@ class Neo4JStorage(BaseGraphStorage):
     )
     async def upsert_node(self, node_id: str, node_data: Dict[str, Any]):
         """
-        Upsert a node in the Neo4j database.
+        在 Neo4j 数据库中插入或更新一个节点。
 
         Args:
-            node_id: The unique identifier for the node (used as label)
-            node_data: Dictionary of node properties
+            node_id: 节点的唯一标识符（作为 id 属性）
+            node_data: 节点属性的字典
         """
-        label = node_id.strip('"')
-        properties = node_data
+        label = node_data.get('entity_type', 'UNKNOWN').strip('"')
+        properties = node_data.copy()
+        properties['displayName'] = node_id.strip('"')
 
         async def _do_upsert(tx: AsyncManagedTransaction):
             query = f"""
-            MERGE (n:`{label}`)
+            MERGE (n {{displayName: $properties.displayName}})
             SET n += $properties
+            REMOVE n:UNKNOWN
+            SET n:{label}
+            RETURN n
             """
-            await tx.run(query, properties=properties)
+            await tx.run(query, properties=properties, label=label)
             logger.debug(
-                f"Upserted node with label '{label}' and properties: {properties}"
+                f"Upserted node with id '{properties['displayName']}', label '{label}' and properties: {properties}"
             )
 
         try:
@@ -265,29 +269,31 @@ class Neo4JStorage(BaseGraphStorage):
         self, source_node_id: str, target_node_id: str, edge_data: Dict[str, Any]
     ):
         """
-        Upsert an edge and its properties between two nodes identified by their labels.
+        在两个节点之间插入或更新关系及其属性，节点通过其 id 标识。
 
         Args:
-            source_node_id (str): Label of the source node (used as identifier)
-            target_node_id (str): Label of the target node (used as identifier)
-            edge_data (dict): Dictionary of properties to set on the edge
+            source_node_id (str): 源节点的 id
+            target_node_id (str): 目标节点的 id
+            edge_data (dict): 要设置在关系上的属性字典
         """
-        source_node_label = source_node_id.strip('"')
-        target_node_label = target_node_id.strip('"')
-        edge_properties = edge_data
+        source_id = source_node_id.strip('"')
+        target_id = target_node_id.strip('"')
+        edge_properties = edge_data.copy()
+        # 从 keywords 中提取第一个关键词作为关系类型
+        keywords = edge_properties.get('keywords', '').split(',')
+        rel_type = keywords[0].strip().strip('"') if keywords else 'RELATED_TO'
 
         async def _do_upsert_edge(tx: AsyncManagedTransaction):
             query = f"""
-            MATCH (source:`{source_node_label}`)
-            WITH source
-            MATCH (target:`{target_node_label}`)
-            MERGE (source)-[r:DIRECTED]->(target)
+            MATCH (source {{displayName: $source_id}})
+            MATCH (target {{displayName: $target_id}})
+            MERGE (source)-[r:`{rel_type}`]->(target)
             SET r += $properties
             RETURN r
             """
-            await tx.run(query, properties=edge_properties)
+            await tx.run(query, source_id=source_id, target_id=target_id, properties=edge_properties)
             logger.debug(
-                f"Upserted edge from '{source_node_label}' to '{target_node_label}' with properties: {edge_properties}"
+                f"Upserted edge from '{source_id}' to '{target_id}' with type '{rel_type}' and properties: {edge_properties}"
             )
 
         try:
