@@ -196,12 +196,13 @@ class Neo4JStorage(BaseGraphStorage):
                 source_node = record["n"]
                 connected_node = record["connected"]
 
+                # ?疑似有错误，应该不是取标签
                 source_label = (
-                    list(source_node.labels)[0] if source_node.labels else None
+                    source_node.get("displayName", None)
                 )
                 target_label = (
-                    list(connected_node.labels)[0]
-                    if connected_node and connected_node.labels
+                    connected_node.get("displayName", None)
+                    if connected_node
                     else None
                 )
 

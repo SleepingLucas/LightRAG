@@ -1,0 +1,2 @@
+- [ ] 添加 postgresql 的 kv 存储的实现
+- [ ] 添加结构化数据导入 LightRAG 的 demo，如导入论文表，专利表等

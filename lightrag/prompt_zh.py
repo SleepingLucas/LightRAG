@@ -134,12 +134,12 @@ PROMPTS_ZH[
 
 PROMPTS_ZH[
     "entiti_continue_extraction"
-] = """上次提取中遗漏了许多实体。使用相同的格式将它们添加在下面：
+] = """上次提取中似乎遗漏了许多关系。请根据提取出的实体之间的关系，使用相同的格式将它们添加在下面：
 """
 
 PROMPTS_ZH[
     "entiti_if_loop_extraction"
-] = """似乎仍然有一些实体可能被遗漏。回答是|否是否仍然需要添加实体。
+] = """似乎仍然有一些实体可能被遗漏。回答 yes 或 no 表示是否仍然需要添加实体：
 """
 
 PROMPTS_ZH["fail_response"] = "对不起，我无法回答这个问题。"

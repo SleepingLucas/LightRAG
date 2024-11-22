@@ -12,11 +12,13 @@ from functools import wraps
 from hashlib import md5
 from typing import Any, Union, List
 import xml.etree.ElementTree as ET
+from dashscope import get_tokenizer
 
 import numpy as np
 import tiktoken
 
 ENCODER = None
+QWEN_TOKENIZER = None
 
 logger = logging.getLogger("lightrag")
 
@@ -118,7 +120,15 @@ def write_json(json_obj, file_name):
         json.dump(json_obj, f, indent=2, ensure_ascii=False)
 
 
-def encode_string_by_tiktoken(content: str, model_name: str = "gpt-4o"):
+def encode_string_by_tiktoken(content: str, model_name: str = "qwen-plus"):
+    if model_name.startswith("qwen"):
+        global QWEN_TOKENIZER
+        if QWEN_TOKENIZER is None:
+            QWEN_TOKENIZER = get_tokenizer(model_name)
+            
+        tokens = QWEN_TOKENIZER.encode(content)
+        return tokens
+    
     global ENCODER
     if ENCODER is None:
         ENCODER = tiktoken.encoding_for_model(model_name)
@@ -126,7 +136,15 @@ def encode_string_by_tiktoken(content: str, model_name: str = "gpt-4o"):
     return tokens
 
 
-def decode_tokens_by_tiktoken(tokens: list[int], model_name: str = "gpt-4o"):
+def decode_tokens_by_tiktoken(tokens: list[int], model_name: str = "qwen-plus"):
+    if model_name.startswith("qwen"):
+        global QWEN_TOKENIZER
+        if QWEN_TOKENIZER is None:
+            QWEN_TOKENIZER = get_tokenizer(model_name)
+            
+        content = QWEN_TOKENIZER.decode(tokens)
+        return content
+    
     global ENCODER
     if ENCODER is None:
         ENCODER = tiktoken.encoding_for_model(model_name)

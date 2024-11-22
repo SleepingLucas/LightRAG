@@ -3,6 +3,8 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
+import sys
+import traceback
 from typing import Type, cast
 
 from .llm import (
@@ -322,7 +324,6 @@ class LightRAG:
                 return
             logger.info(f"[New Chunks] inserting {len(inserting_chunks)} chunks")
 
-            logger.debug(f"[upserting chunks] {inserting_chunks}")
 
             logger.info("[Entity Extraction]...")
             maybe_new_kg = await extract_entities(
@@ -337,6 +338,7 @@ class LightRAG:
                 return
             self.chunk_entity_relation_graph = maybe_new_kg
 
+            logger.debug(f"[upserting chunks] {inserting_chunks}")
             await asyncio.gather(
                 # 更新切片数据库
                 self.chunks_vdb.upsert(data=inserting_chunks),
@@ -347,7 +349,8 @@ class LightRAG:
             )
             
         except Exception as e:
-            logger.error(f"Error while inserting: {e}")
+            logger.error(f"Error while inserting line {sys.exc_info()[-1].tb_lineno}: {e}")
+            logger.error(f"堆栈信息: {traceback.format_exc()}")
         finally:
             if update_storage:
                 await self._insert_done()

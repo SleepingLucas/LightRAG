@@ -696,7 +696,7 @@ async def _build_local_query_context(
         {**n, "entity_name": k["entity_name"], "rank": d}
         for k, n, d in zip(results, node_datas, node_degrees)   # 实体名，实体信息，度
         if n is not None
-    ]#what is this text_chunks_db doing.  dont remember it in airvx.  check the diagram.
+    ] # keys: ['entity_type', 'displayName', 'description', 'source_id', 'entity_name', 'rank']
     
     # 获取与实体最相关的文本单元
     use_text_units = await _find_most_related_text_unit_from_entities(
@@ -707,6 +707,14 @@ async def _build_local_query_context(
     use_relations = await _find_most_related_edges_from_entities(
         node_datas, query_param, knowledge_graph_inst
     )
+    
+    # 截断文本单元列表以符合最大 token 数限制
+    node_datas = truncate_list_by_token_size(
+        node_datas,
+        key=lambda x: json.dumps(x, ensure_ascii=False),
+        max_token_size=query_param.max_token_for_local_context,
+    )
+    
     logger.info(
         f"Local query uses {len(node_datas)} entites, {len(use_relations)} relations, {len(use_text_units)} text units"
     )
@@ -855,7 +863,7 @@ async def _find_most_related_text_unit_from_entities(
     # 根据最大 token 大小截断文本单元列表
     all_text_units = truncate_list_by_token_size(
         all_text_units,
-        key=lambda x: json.dumps(x),
+        key=lambda x: json.dumps(x["data"], ensure_ascii=False),
         max_token_size=query_param.max_token_for_text_unit,
     )
     
@@ -881,10 +889,11 @@ async def _find_most_related_edges_from_entities(
         list[dict]: 关系列表
     """
     
+    # 获取每个实体的一跳邻居节点
     all_related_edges = await asyncio.gather(
         *[knowledge_graph_inst.get_node_edges(dp["entity_name"]) for dp in node_datas]
     )
-    all_edges = []
+    all_edges: list[tuple[str, str]] = []
     seen = set()
 
     for this_edges in all_related_edges:
@@ -894,12 +903,16 @@ async def _find_most_related_edges_from_entities(
                 seen.add(sorted_edge)
                 all_edges.append(sorted_edge)
 
+    # 获取所有边的数据
     all_edges_pack = await asyncio.gather(
         *[knowledge_graph_inst.get_edge(e[0], e[1]) for e in all_edges]
     )
+    
+    # 获取所有边的度
     all_edges_degree = await asyncio.gather(
         *[knowledge_graph_inst.edge_degree(e[0], e[1]) for e in all_edges]
     )
+    
     all_edges_data = [
         {"src_tgt": k, "rank": d, **v}
         for k, v, d in zip(all_edges, all_edges_pack, all_edges_degree)
@@ -910,7 +923,7 @@ async def _find_most_related_edges_from_entities(
     )
     all_edges_data = truncate_list_by_token_size(
         all_edges_data,
-        key=lambda x: json.dumps(x),
+        key=lambda x: json.dumps(x, ensure_ascii=False),
         max_token_size=query_param.max_token_for_global_context,
     )
     return all_edges_data
@@ -1055,16 +1068,11 @@ async def _build_global_query_context(
         {"src_id": k["src_id"], "tgt_id": k["tgt_id"], "rank": d, **v}
         for k, v, d in zip(results, edge_datas, edge_degree)
         if v is not None
-    ]
+    ] # keys: ['src_id', 'tgt_id', 'rank', 'keywords', 'weight', 'description', 'source_id']
+    
     # 按排名和权重对关系进行排序
     edge_datas = sorted(
         edge_datas, key=lambda x: (x["rank"], x["weight"]), reverse=True
-    )
-    # 截断关系列表以符合最大token数限制
-    edge_datas = truncate_list_by_token_size(
-        edge_datas,
-        key=lambda x: json.dumps(x),
-        max_token_size=query_param.max_token_for_global_context,
     )
 
     # 从关系中提取相关的实体
@@ -1075,6 +1083,14 @@ async def _build_global_query_context(
     use_text_units = await _find_related_text_unit_from_relationships(
         edge_datas, query_param, text_chunks_db, knowledge_graph_inst
     )
+    
+    # 截断关系列表以符合最大token数限制
+    edge_datas = truncate_list_by_token_size(
+        edge_datas,
+        key=lambda x: json.dumps(x, ensure_ascii=False),
+        max_token_size=query_param.max_token_for_global_context,
+    )
+    
     logger.info(
         f"Global query uses {len(use_entities)} entites, {len(edge_datas)} relations, {len(use_text_units)} text units"
     )
@@ -1082,6 +1098,7 @@ async def _build_global_query_context(
     relations_section_list = [
         ["id", "source", "target", "description", "keywords", "weight", "rank"]
     ]
+    
     for i, e in enumerate(edge_datas):
         relations_section_list.append(
             [
@@ -1174,7 +1191,7 @@ async def _find_most_related_entities_from_relationships(
     # 根据最大 token 大小截断实体列表
     node_datas = truncate_list_by_token_size(
         node_datas,
-        key=lambda x: json.dumps(x),
+        key=lambda x: json.dumps(x, ensure_ascii=False),
         max_token_size=query_param.max_token_for_local_context,
     )
 
@@ -1230,7 +1247,7 @@ async def _find_related_text_unit_from_relationships(
     # 根据最大 token 大小截断文本块列表
     all_text_units = truncate_list_by_token_size(
         all_text_units,
-        key=lambda x: json.dumps(x),
+        key=lambda x: json.dumps(x, ensure_ascii=False),
         max_token_size=query_param.max_token_for_text_unit,
     )
     # 提取文本单元数据
@@ -1449,7 +1466,7 @@ async def naive_query(
 
     maybe_trun_chunks = truncate_list_by_token_size(
         chunks,
-        key=lambda x: json.dumps(x),
+        key=lambda x: json.dumps(x, ensure_ascii=False),
         max_token_size=query_param.max_token_for_text_unit,
     )
     logger.info(f"Truncate {len(chunks)} to {len(maybe_trun_chunks)} chunks")
